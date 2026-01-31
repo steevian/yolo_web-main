@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 # @Time : 2024-12-2024/12/26 23:21
-# @Author : 林枫
 # @File : main.py
 # 核心修正1：跳过SSL证书验证，彻底解决模型下载/网络请求的SSL报错
 import ssl
