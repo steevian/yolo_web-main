@@ -662,11 +662,11 @@ class VideoProcessingApp:
                     conf=conf,
                     show=False,
                     device='cpu',
-                    font=self.system_font_path
+                    
                 )
                 
                 # 绘制检测结果
-                processed_frame = results[0].plot(font=self.system_font_path)
+                processed_frame = results[0].plot()
                 out.write(processed_frame)
             
             # 释放资源
@@ -1101,7 +1101,7 @@ class VideoProcessingApp:
             
             # 核心修改2：保存检测结果图片到Flask项目内的runs目录（临时文件）
             if detections:
-                result_img = detection_results[0].plot(font=self.system_font_path)
+                result_img = detection_results[0].plot()
                 cv2.imwrite(self.paths['temp_result'], result_img)
             else:
                 # 未检测到目标，复制原图作为结果到项目内临时路径
@@ -1179,11 +1179,11 @@ class VideoProcessingApp:
                         show=False,
                         half=False,
                         device='cpu',
-                        font=self.system_font_path
+                       
                     )
                     
                     # 绘制检测框和标签
-                    processed_frame = results[0].plot(font=self.system_font_path)
+                    processed_frame = results[0].plot()
                     video_writer.write(processed_frame)
                     
                     # 编码为jpg，生成视频流返回前端
@@ -1264,11 +1264,11 @@ class VideoProcessingApp:
                         show=False,
                         half=False,
                         device='cpu',
-                        font=self.system_font_path
+                        
                     )
                     
                     # 绘制检测框和标签
-                    processed_frame = results[0].plot(font=self.system_font_path)
+                    processed_frame = results[0].plot()
                     if self.recording:
                         video_writer.write(processed_frame)
                     
