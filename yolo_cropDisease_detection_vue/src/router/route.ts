@@ -80,7 +80,8 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/cameraPredict',
 				name: 'cameraPredict',
-				component: import('/@/views/cameraPredict/index.vue').then(m => m.default),
+				// 统一组件导入风格（与其他路由保持一致），避免 .then(m => m.default) 潜在问题
+				component: () => import('/@/views/cameraPredict/index.vue'),
 				meta: {
 					title: '摄像检测',
 					isLink: '',
@@ -148,7 +149,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 					isKeepAlive: true,
 					isAffix: false,
 					isIframe: false,
-					roles: ['admin'],
+					roles: ['admin'], // 仅管理员可见
 					icon: 'iconfont icon-yonghuguanli',
 				},
 			},
