@@ -713,7 +713,9 @@ class VideoProcessingApp:
             self.db_manager.add_video_record(record_data)
             
             # 通知前端处理完成
+            print(f"✅ 准备发送视频结果到前端: {result_url}")
             self.socketio.emit('video_result', {'video_path': result_url})
+            print(f"✅ 已发送视频结果事件")
             self.socketio.emit('message', {'data': '视频检测完成！'})
             self.socketio.emit('progress', 100)
             
