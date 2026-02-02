@@ -400,6 +400,8 @@ class VideoProcessingApp:
             'temp_result': os.path.join(self.BASE_DIR, 'runs/result.jpg')  # 临时检测结果图
         }
         self.recording = False
+        # 新增：视频处理进度缓存，用于Socket实时推送
+        self.video_process_progress = 0
 
     def create_directories(self):
         """创建必要的目录（基于Flask项目根目录）"""
@@ -488,12 +490,95 @@ class VideoProcessingApp:
         # WebSocket事件
         @self.socketio.on('connect')
         def handle_connect():
+            self.video_process_progress = 0  # 连接重置进度
             print("WebSocket connected! 杂草检测服务已就绪")
             emit('message', {'data': 'Connected to Weed Detection WebSocket server!'})
 
         @self.socketio.on('disconnect')
         def handle_disconnect():
+            self.video_process_progress = 0  # 断开重置进度
             print("WebSocket disconnected!")
+
+        # ========== 核心新增：监听前端的process_video指令 ==========
+        @self.socketio.on('process_video')
+        def handle_process_video(data):
+            """接收前端视频处理请求，触发检测并实时推送进度"""
+            try:
+                # 重置进度
+                self.video_process_progress = 0
+                # 打印接收的参数，调试用
+                print(f"\n📹 收到前端视频处理请求 >> {data}")
+                # 提取前端参数
+                username = data.get('username', 'default_user')
+                input_video = data.get('inputVideo', '')
+                conf = float(data.get('conf', 0.5))
+                start_time = data.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
+                # 校验视频地址
+                if not input_video:
+                    emit('message', {'data': '视频地址为空，检测失败！'})
+                    emit('progress', 100)
+                    return
+
+                # 下载网络视频到本地（和原有predictVideo逻辑一致）
+                video_path = input_video
+                if video_path.startswith(('http://', 'https://')):
+                    local_path = self.download_file(video_path, os.path.join(self.paths['uploads'], 'videos/'))
+                    if not local_path:
+                        emit('message', {'data': '网络视频下载失败，检测终止！'})
+                        emit('progress', 100)
+                        return
+                    video_path = local_path
+
+                # 校验视频文件是否存在
+                if not os.path.exists(video_path):
+                    emit('message', {'data': f'视频文件不存在：{video_path}'})
+                    emit('progress', 100)
+                    return
+
+                # 打开视频，获取总帧数（计算真实进度）
+                cap = cv2.VideoCapture(video_path)
+                if not cap.isOpened():
+                    emit('message', {'data': '无法打开视频文件，检测终止！'})
+                    emit('progress', 100)
+                    return
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                cap.release()  # 先释放，后续predictVideo会重新打开
+
+                # 校验总帧数
+                if total_frames == 0:
+                    emit('message', {'data': '视频文件损坏，无有效帧！'})
+                    emit('progress', 100)
+                    return
+
+                print(f"📹 视频检测开始 >> 总帧数：{total_frames}，置信度：{conf}")
+                emit('message', {'data': f'开始视频检测，共{total_frames}帧，请等待...'})
+
+                # 核心：循环推送真实进度（和predictVideo的实际检测同步）
+                def push_progress():
+                    while self.video_process_progress < 100:
+                        # 推送当前进度给前端
+                        emit('progress', self.video_process_progress)
+                        # 微延时，避免推送过快
+                        import time
+                        time.sleep(0.1)
+                    # 最终推送100%
+                    emit('progress', 100)
+                    print(f"📹 视频检测进度推送完成 >> 100%")
+
+                # 启动进度推送线程（不阻塞主检测逻辑）
+                import threading
+                progress_thread = threading.Thread(target=push_progress)
+                progress_thread.daemon = True
+                progress_thread.start()
+
+            except Exception as e:
+                # 异常处理：推送100%进度，释放前端检测锁
+                self.video_process_progress = 100
+                emit('progress', 100)
+                emit('message', {'data': f'视频检测初始化失败：{str(e)}'})
+                print(f"❌ 视频处理指令监听出错：{str(e)}")
+        # ========== WebSocket指令监听结束 ==========
 
     # 核心优化3：重写run方法，只显示127.0.0.1和192.168.0.101，隐藏0.0.0.0
     def run(self):
@@ -894,7 +979,7 @@ class VideoProcessingApp:
         return detections
 
     def predictVideo(self):
-        """视频杂草检测流接口"""
+        """视频杂草检测流接口【核心修改：添加真实进度计算】"""
         self.data.clear()
         self.data.update({
             "username": request.args.get('username', ''),
@@ -902,6 +987,8 @@ class VideoProcessingApp:
             "startTime": request.args.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             "inputVideo": request.args.get('inputVideo', '')
         })
+        # 重置进度（关键）
+        self.video_process_progress = 0
         
         # 下载前端传入的视频文件到项目内uploads
         video_path = self.data["inputVideo"]
@@ -923,6 +1010,9 @@ class VideoProcessingApp:
         fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        # 核心新增：获取视频总帧数，计算真实进度
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        current_frame = 0
         
         # 初始化视频写入器（项目内路径）
         os.makedirs(os.path.dirname(self.paths['video_output']), exist_ok=True)
@@ -934,11 +1024,17 @@ class VideoProcessingApp:
         )
 
         def generate():
+            nonlocal current_frame
             try:
                 while cap.isOpened():
                     ret, frame = cap.read()
                     if not ret:
                         break
+                    
+                    current_frame += 1
+                    # 核心修改：计算并更新真实进度（同步推送给前端）
+                    if total_frames > 0:
+                        self.video_process_progress = min(int((current_frame / total_frames) * 100), 99)
                     
                     # 杂草检测（强制CPU）
                     results = self.weed_model.predict(
@@ -959,6 +1055,8 @@ class VideoProcessingApp:
                     yield b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
                     
             finally:
+                # 释放资源前，进度置为100%
+                self.video_process_progress = 100
                 # 释放资源
                 self.cleanup_resources(cap, video_writer)
                 self.socketio.emit('message', {'data': '杂草检测完成，正在保存视频！'})
