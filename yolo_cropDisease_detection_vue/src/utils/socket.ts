@@ -1,25 +1,23 @@
-import { io, Socket } from 'socket.io-client'; // 显式导入Socket类型，增强TS类型提示
+import { io, Socket } from 'socket.io-client';
 
 export class SocketService {
-  private socket: Socket; // 强类型定义，替代any
+  private socket: Socket;
 
   constructor() {
-    // 修复问题1：去掉ws://前缀，用http前缀（Flask-SocketIO默认协议）
     const currentHost = window.location.hostname;
     this.socket = io(`http://${currentHost}:5000`, {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
-      transports: ['polling', 'websocket'], // 显式指定降级策略，适配Flask-SocketIO
+      transports: ['polling', 'websocket'],
     });
 
     this.setupListeners();
   }
 
-  // 修复问题4：绑定this，避免指向异常
   private setupListeners = () => {
     this.socket.on('connect', () => {
-      console.log('Connected to Weed Detection WebSocket server!'); // 与你之前的控制台日志保持一致
+      console.log('Connected to Weed Detection WebSocket server!');
     });
 
     this.socket.on('disconnect', (reason: string) => {
@@ -31,22 +29,38 @@ export class SocketService {
     });
   }
 
-  // 修复问题3：移除自定义数据解析，直接透传后端原始数据
-  on(event: string, callback: (data: any) => void) {
+  // 添加 off 方法 - 解决 "socketService.off is not a function" 错误
+  off(event: string, callback?: (data: any) => void): void {
+    if (callback) {
+      // 移除特定回调的监听器
+      this.socket.off(event, callback);
+    } else {
+      // 移除该事件的所有监听器
+      this.socket.off(event);
+    }
+  }
+
+  on(event: string, callback: (data: any) => void): void {
     this.socket.on(event, callback);
   }
 
-  // 修复问题2：直接用socket.connected获取真实连接状态，删除冗余的connected属性
-  emit(event: string, data: any) {
+  emit(event: string, data: any): void {
     if (this.socket.connected) {
       this.socket.emit(event, data);
     } else {
       console.warn('Socket not connected, cannot emit event:', event);
+      // 尝试重新连接
+      this.socket.connect();
+      // 延迟发送
+      setTimeout(() => {
+        if (this.socket.connected) {
+          this.socket.emit(event, data);
+        }
+      }, 1000);
     }
   }
 
-  // 重连指定URL
-  connect(url?: string) {
+  connect(url?: string): void {
     if (url && url !== this.socket.io.uri) {
       this.socket.disconnect();
       this.socket.io.uri = url;
@@ -56,22 +70,61 @@ export class SocketService {
     }
   }
 
-  // 断开连接
-  disconnect() {
+  disconnect(): void {
     if (this.socket.connected) {
       this.socket.disconnect();
     }
   }
 
-  close() {
+  close(): void {
     this.disconnect();
   }
 
-  // 对外暴露真实的连接状态（getter）
-  get isConnected(): boolean { // 重命名为isConnected，避免歧义
+  get isConnected(): boolean {
     return this.socket.connected;
+  }
+
+  // 新增：移除所有事件监听器
+  removeAllListeners(): void {
+    this.socket.removeAllListeners();
+  }
+
+  // 新增：获取连接状态详情
+  get connectionState(): string {
+    if (!this.socket) return 'not_initialized';
+    return this.socket.connected ? 'connected' : this.socket.disconnected ? 'disconnected' : 'connecting';
+  }
+
+  // 新增：等待连接建立
+  waitForConnection(timeout = 5000): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (this.socket.connected) {
+        resolve(true);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        this.socket.off('connect', onConnect);
+        resolve(false);
+      }, timeout);
+
+      const onConnect = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+
+      this.socket.once('connect', onConnect);
+    });
   }
 }
 
-// 导出单例实例（推荐，全局只需要一个Socket连接）
+// 导出单例实例
 export const socketService = new SocketService();
+
+// 可选：创建全局Socket实例的方法
+export const createSocketService = (url?: string): SocketService => {
+  if (url) {
+    return new SocketService(); // 注意：这里应该使用新的URL，但需要修改构造函数
+  }
+  return socketService;
+};

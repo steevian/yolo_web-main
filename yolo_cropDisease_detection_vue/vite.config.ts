@@ -39,87 +39,142 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
       open: env.VITE_OPEN === 'true' || false, // 修复布尔值解析
       hmr: true, // 热更新开启
       proxy: {
-        // 🔥 核心修复：/flask代理（匹配后端/flask/login）- 移除rewrite，直接转发完整路径
+        // 🔥 核心优化：Flask统一接口代理（所有接口通过/flask前缀访问）
         '/flask': {
           target: FLASK_BASE_URL,
           ws: true, // 支持WebSocket
-          changeOrigin: true, // 开启跨域代理（核心）
+          changeOrigin: true, // 开启跨域代理
           secure: false, // 关闭HTTPS校验，适配本地Flask服务
+          // 移除rewrite，保持路径原样转发到Flask（Flask有/flask前缀接口）
         },
-        // 静态文件代理 - 保留原有配置，确保图片/检测结果请求正常
+        
+        // 🔥 核心优化：统一上传接口代理（覆盖所有上传相关路径）
+        '/upload': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+          // 直接转发到Flask的/upload接口
+        },
+        
+        // 🔥 核心优化：统一预测接口代理
+        '/predict': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+          ws: true, // 预测接口可能需要WebSocket
+        },
+        
+        // 🔥 新增：视频检测流接口代理
+        '/predictVideo': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+          // 注意：视频流接口不需要WebSocket，使用HTTP流
+        },
+        
+        // 静态文件代理 - 确保图片/检测结果请求正常
         '/uploads': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          ws: false, // 静态文件无需WebSocket，强制关闭避免冲突
           secure: false,
         },
+        
         '/results': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          ws: false,
           secure: false,
         },
-        // 添加预测接口代理 - 保留WebSocket支持
-        '/predict': {
-          target: FLASK_BASE_URL,
-          ws: true, // 支持WebSocket  
-          secure: false
-        },
-        // 后端检测临时图片目录代理
+        
+        // 检测临时图片目录代理
         '/runs': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          ws: false,
           secure: false,
         },
-        // 🔴 删除了无效的/api/user/login映射（原映射到后端/login，无此接口）
-        // 通用用户接口：更新/删除/查询，统一映射到Flask/user
+        
+        // 🔥 优化：用户接口代理（统一到Flask的/user接口）
         '/api/user': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
           rewrite: (path) => {
-            // 提取ID并重构路径：/api/user/update/123 → /user/123
-            const idMatch = path.match(/\/api\/user\/(update|delete)\/(\d+)/);
+            // 处理各种用户接口格式：
+            // /api/user/login -> /flask/login (已由/flask代理处理)
+            // /api/user/test123 -> /flask/user/test123
+            const cleanPath = path.replace(/^\/api\/user/, '');
+            
+            // 如果路径以数字结尾，认为是用户ID操作
+            const idMatch = cleanPath.match(/^\/(\d+)$/);
             if (idMatch) {
-              return `/user/${idMatch[2]}`;
+              return `/flask/user/${idMatch[1]}`;
             }
-            // 其他用户接口：/api/user/info → /user/info
-            return path.replace(/^\/api\/user/, '/user');
+            
+            // 其他情况，如果路径不为空，转发到/flask/user路径
+            if (cleanPath && cleanPath !== '/') {
+              return `/flask/user${cleanPath}`;
+            }
+            
+            // 默认用户列表
+            return '/flask/user';
           },
           secure: false,
         },
-        // 业务记录代理：/api/xxxRecords 映射到Flask/xxx_records（下划线标准化）
+        
+        // 🔥 优化：业务记录代理（统一到Flask的xxx_records接口）
         '/api/imgRecords': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          rewrite: () => '/img_records',
+          rewrite: () => '/flask/img_records',
           secure: false,
         },
+        
         '/api/videoRecords': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          rewrite: () => '/video_records',
+          rewrite: () => '/flask/video_records',
           secure: false,
         },
+        
         '/api/cameraRecords': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          rewrite: () => '/camera_records',
+          rewrite: () => '/flask/camera_records',
           secure: false,
         },
-        // 文件上传代理：/files/upload 映射到Flask/upload
-        '/files/upload': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          rewrite: () => '/upload',
-          secure: false,
-        },
-        // 兜底代理：未匹配的/api请求，统一转发到Flask（兼容旧代码）
+        
+        // 🔥 优化：移除/files/upload代理，统一使用/upload
+        // （避免路径冲突，Flask现在通过/upload处理所有上传）
+        
+        // 🔥 优化：兜底代理 - 未匹配的/api请求，统一转发到Flask
         '/api': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api/, ''),
+          rewrite: (path) => {
+            // 移除/api前缀，转发到Flask对应接口
+            const cleanPath = path.replace(/^\/api/, '');
+            // 如果路径以数字结尾，保留原样
+            if (cleanPath.match(/^\/(\d+)$/)) {
+              return cleanPath;
+            }
+            // 其他情况，如果没有特定前缀，默认加/flask前缀
+            if (!cleanPath.startsWith('/flask') && !cleanPath.startsWith('/uploads')) {
+              return `/flask${cleanPath}`;
+            }
+            return cleanPath;
+          },
           secure: false,
+        },
+        
+        // 🔥 新增：Socket.IO WebSocket代理（关键：解决Socket连接问题）
+        '/socket.io': {
+          target: FLASK_BASE_URL,
+          ws: true, // 必须开启WebSocket支持
+          changeOrigin: true,
+          secure: false,
+          // Socket.IO需要特殊的headers处理
+          headers: {
+            'Connection': 'Upgrade',
+            'Upgrade': 'websocket'
+          }
         },
       },
     },

@@ -64,106 +64,137 @@
 
 <script setup lang="ts">
 import { reactive, ref, onMounted, onActivated, onDeactivated, onUnmounted } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus';
 import { VideoCamera } from '@element-plus/icons-vue';
 import request from '/@/utils/request';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
 import type { UploadInstance, UploadProps } from 'element-plus';
-import { socketService } from '/@/utils/socket'; // 改为导入单例，避免重复创建连接
-import { formatDate } from '/@/utils/formatTime';
+import { socketService } from '/@/utils/socket';
 
 // 核心变量定义
 const uploadFile = ref<UploadInstance>();
-const conf = ref(50); // 置信度默认50%（0-100范围）
+const conf = ref(50);
 const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
-const videoPlayer = ref<HTMLVideoElement | null>(null); // 视频播放器引用
+const videoPlayer = ref<HTMLVideoElement | null>(null);
 
 // 状态管理
-const isVideoActive = ref(false); // 视频是否正在播放
-const statusMessage = ref(''); // 状态消息
-const statusType = ref('info'); // 状态类型
-const videoLoadAttempts = ref(0); // 视频加载尝试次数
+const isVideoActive = ref(false);
+const statusMessage = ref('');
+const statusType = ref('info');
+const videoLoadAttempts = ref(0);
 
-// 跨域核心修复：自动获取当前页面IP，替换硬编码的localhost
-const currentHost = window.location.hostname;
-// SpringBoot视频上传地址（跨域适配）
-const uploadAction = ref(`http://${currentHost}:9999/files/upload`);
-// Flask视频检测地址（跨域适配）
-const flaskPredictUrl = ref(`http://${currentHost}:5000/predictVideo`);
+// 使用Flask统一处理所有后端服务
+const uploadAction = ref('/upload');
+const flaskPredictUrl = ref('/predictVideo');
 
 const state = reactive({
-	video_path: '', // 检测结果视频地址
-	type_text: "正在处理杂草检测视频", // 进度条文案
-	percentage: 0, // 进度条百分比
-	isShow: false, // 进度条显示状态
-	isDetecting: false, // 检测状态锁，防止重复点击/请求
-	form: { // 检测请求参数
+	video_path: '',
+	type_text: "正在处理杂草检测视频",
+	percentage: 0,
+	isShow: false,
+	isDetecting: false,
+	form: {
 		username: '',
-		inputVideo: null as any, // 上传视频的后端标识
-		conf: 0.5, // 置信度（默认0.5）
-		startTime: '' // 检测时间
+		inputVideo: null as any,
+		conf: 0.5,
+		startTime: ''
 	},
 });
 
-// Socket消息监听初始化（全局只初始化一次）
+// Socket消息监听初始化 - 修复socketService.off错误
 const initSocketListener = () => {
-	// 移除原有监听，防止重复绑定
-	socketService.on('message', () => {});
-	socketService.on('progress', () => {});
-	socketService.on('error', () => {});
-	socketService.on('video_result', () => {});
-
-	// Socket普通消息监听
-	socketService.on('message', (data) => {
-		console.log('Socket接收消息:', data);
-		ElMessage.success(typeof data === 'object' ? JSON.stringify(data) : data);
-	});
-
-	// 进度条监听（与Flask后端emit事件名严格匹配）
-	socketService.on('progress', (data) => {
-		// 兼容后端直接传数字或对象格式
-		state.percentage = typeof data === 'object' ? (data.percentage || 0) : parseInt(data) || 0;
-		state.isShow = true;
-		console.log('视频处理进度:', state.percentage);
-
-		// 处理完成逻辑
-		if (state.percentage >= 100) {
-			ElMessage.success("杂草检测视频处理完成！");
-			setTimeout(() => {
-				state.isShow = false;
-				state.percentage = 0;
-				state.isDetecting = false; // 处理完成后释放检测锁
-				statusMessage.value = '视频检测完成，可以播放结果';
-				statusType.value = 'success';
-			}, 2000);
+	try {
+		// 使用新的off方法移除原有监听器（如果off方法存在）
+		if (typeof socketService.off === 'function') {
+			socketService.off('message');
+			socketService.off('progress');
+			socketService.off('error');
+			socketService.off('video_result');
+		} else {
+			console.warn('socketService.off 方法不存在，跳过移除监听器');
 		}
-	});
 
-	// 检测结果监听（接收后端返回的结果视频地址）
-	socketService.on('video_result', (data) => {
-		const resultVideo = typeof data === 'object' ? data.video_path : data;
-		if (resultVideo) {
-			state.video_path = resultVideo + `&t=${Date.now()}`; // 加时间戳防缓存
-			videoLoadAttempts.value = 0;
-			ElMessage.info('检测结果视频已生成，正在加载...');
-		}
-	});
+		// Socket普通消息监听
+		socketService.on('message', (data) => {
+			console.log('Socket接收消息:', data);
+			const msg = typeof data === 'object' ? (data.data || JSON.stringify(data)) : data;
+			if (msg && !msg.includes('Connected')) {
+				ElMessage.success(msg);
+			}
+		});
 
-	// Socket错误监听
-	socketService.on('error', (err) => {
-		console.error('Socket连接错误:', err);
-		ElMessage.error('实时进度通知连接失败，进度条将无法更新！');
-		state.isDetecting = false;
-		statusMessage.value = '实时通知连接失败，但视频检测仍在进行';
-		statusType.value = 'warning';
-	});
+		// 进度条监听
+		socketService.on('progress', (data) => {
+			// 兼容后端直接传数字或对象格式
+			let progress = 0;
+			if (typeof data === 'object') {
+				progress = data.percentage || data.data || 0;
+			} else {
+				progress = parseInt(data) || 0;
+			}
+			
+			// 确保进度在0-100范围内
+			progress = Math.max(0, Math.min(100, progress));
+			
+			state.percentage = progress;
+			state.isShow = true;
+			console.log('视频处理进度:', state.percentage);
+
+			// 处理完成逻辑
+			if (state.percentage >= 100) {
+				ElMessage.success("杂草检测视频处理完成！");
+				setTimeout(() => {
+					state.isShow = false;
+					state.percentage = 0;
+					state.isDetecting = false;
+					statusMessage.value = '视频检测完成，可以播放结果';
+					statusType.value = 'success';
+				}, 2000);
+			}
+		});
+
+		// 检测结果监听
+		socketService.on('video_result', (data) => {
+			console.log('收到视频结果:', data);
+			const resultVideo = typeof data === 'object' ? (data.video_path || data.data || data) : data;
+			
+			if (resultVideo) {
+				// 确保是完整的URL路径
+				let videoUrl = resultVideo;
+				if (videoUrl.startsWith('/')) {
+					videoUrl = `${window.location.protocol}//${window.location.host}${videoUrl}`;
+				}
+				
+				// 添加时间戳防止缓存
+				const url = new URL(videoUrl, window.location.origin);
+				url.searchParams.set('t', Date.now().toString());
+				
+				state.video_path = url.toString();
+				videoLoadAttempts.value = 0;
+				
+				ElMessage.success('检测结果视频已生成！');
+			}
+		});
+
+		// Socket错误监听
+		socketService.on('error', (err) => {
+			console.error('Socket连接错误:', err);
+			ElMessage.error('实时进度通知连接失败，进度条将无法更新！');
+			state.isDetecting = false;
+			statusMessage.value = '实时通知连接失败，但视频检测仍在进行';
+			statusType.value = 'warning';
+		});
+	} catch (error) {
+		console.error('初始化Socket监听器失败:', error);
+		ElMessage.warning('Socket监听器初始化失败，但可以继续使用');
+	}
 };
 
-// 置信度滑块格式化（转成0-1的小数）
+// 置信度滑块格式化
 const formatTooltip = (val: number) => {
-	return val / 100;
+	return (val / 100).toFixed(2);
 };
 
 // 上传前验证
@@ -172,8 +203,13 @@ const beforeUpload = (file: File) => {
 	const allowedTypes = ['video/mp4', 'video/avi', 'video/mpeg', 'video/quicktime', 'video/x-msvideo'];
 	const isVideo = allowedTypes.some(type => file.type.startsWith('video/') || allowedTypes.includes(file.type));
 	
-	if (!isVideo) {
-		ElMessage.error('只能上传视频文件（MP4、AVI等格式）！');
+	// 通过文件扩展名二次验证
+	const fileExt = file.name.toLowerCase().split('.').pop();
+	const allowedExts = ['mp4', 'avi', 'mov', 'mkv', 'flv', 'wmv', 'm4v'];
+	const hasValidExt = fileExt && allowedExts.includes(fileExt);
+	
+	if (!isVideo && !hasValidExt) {
+		ElMessage.error('只能上传视频文件（MP4、AVI、MOV、MKV等格式）！');
 		return false;
 	}
 	
@@ -187,7 +223,7 @@ const beforeUpload = (file: File) => {
 	return true;
 };
 
-// 视频上传成功回调【核心修改：替换localhost为当前IP】
+// 视频上传成功回调
 const handleAvatarSuccessone: UploadProps['onSuccess'] = (response, uploadFile) => {
 	// 停止当前视频播放
 	stopVideoPlayback();
@@ -195,17 +231,20 @@ const handleAvatarSuccessone: UploadProps['onSuccess'] = (response, uploadFile) 
 	// 上传新视频，清空之前的检测结果
 	state.video_path = '';
 	isVideoActive.value = false;
+	state.percentage = 0;
+	state.isShow = false;
 	
-	// 核心修复：将返回的localhost:9999替换为当前主机IP，让Flask后端能访问到视频
-	let videoUrl = response.data;
-	if (videoUrl.includes('localhost:9999')) {
-		videoUrl = videoUrl.replace('localhost:9999', `${currentHost}:9999`);
+	// 核心修复：直接使用Flask返回的相对路径
+	if (response && response.data) {
+		state.form.inputVideo = response.data;
+		ElMessage.success('杂草检测视频上传成功！');
+		statusMessage.value = '视频上传成功，请点击开始检测';
+		statusType.value = 'success';
+	} else {
+		ElMessage.error('上传响应格式错误，请重试');
+		statusMessage.value = '上传失败，服务器响应格式错误';
+		statusType.value = 'error';
 	}
-	state.form.inputVideo = videoUrl; // 赋值替换后的地址
-	
-	ElMessage.success('杂草检测视频上传成功！');
-	statusMessage.value = '视频上传成功，请点击开始检测';
-	statusType.value = 'success';
 };
 
 // 停止视频播放
@@ -236,6 +275,9 @@ const onVideoError = (error: Event) => {
 		// 重试加载
 		setTimeout(() => {
 			if (videoPlayer.value && state.video_path) {
+				const url = new URL(state.video_path, window.location.origin);
+				url.searchParams.set('retry', videoLoadAttempts.value.toString());
+				videoPlayer.value.src = url.toString();
 				videoPlayer.value.load();
 			}
 		}, 1000 * videoLoadAttempts.value);
@@ -247,58 +289,102 @@ const onVideoError = (error: Event) => {
 	}
 };
 
-// 开始杂草检测【优化Socket逻辑，移除重复创建】
+// 修复时间格式函数 - 确保返回正确的格式
+const formatDateTime = (): string => {
+	try {
+		const now = new Date();
+		console.log('原始Date对象:', now);
+		
+		// 直接使用Date方法，确保月份正确（getMonth()返回0-11）
+		const year = now.getFullYear();
+		const month = String(now.getMonth() + 1).padStart(2, '0');
+		const day = String(now.getDate()).padStart(2, '0');
+		const hours = String(now.getHours()).padStart(2, '0');
+		const minutes = String(now.getMinutes()).padStart(2, '0');
+		const seconds = String(now.getSeconds()).padStart(2, '0');
+		
+		const result = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+		console.log('格式化后的时间字符串:', result);
+		return result;
+	} catch (error) {
+		console.error('时间格式化错误:', error);
+		// 返回当前时间的简单格式作为后备
+		const now = new Date();
+		return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+	}
+};
+
+// 开始杂草检测
 const upData = async () => {
 	// 多重参数校验
-	if (state.isDetecting) return ElMessage.warning('正在处理视频，请勿重复点击！');
-	if (!state.form.inputVideo) return ElMessage.warning('请先上传杂草检测视频！');
-	if (isNaN(Number(conf.value)) || conf.value < 0 || conf.value > 100) return ElMessage.warning('请设置0-100之间的有效置信度阈值！');
+	if (state.isDetecting) {
+		ElMessage.warning('正在处理视频，请勿重复点击！');
+		return;
+	}
+	
+	if (!state.form.inputVideo) {
+		ElMessage.warning('请先上传杂草检测视频！');
+		return;
+	}
+	
+	if (isNaN(Number(conf.value)) || conf.value < 0 || conf.value > 100) {
+		ElMessage.warning('请设置0-100之间的有效置信度阈值！');
+		return;
+	}
 	
 	try {
 		// 组装请求参数
 		state.isDetecting = true;
-		state.form.conf = parseFloat(conf.value) / 100;
+		state.form.conf = parseFloat((conf.value / 100).toFixed(2));
 		state.form.username = userInfos.value.userName || 'default_user';
-		state.form.startTime = formatDate(new Date(), 'YYYY-MM-DD HH:mm:ss');
+		
+		// 使用修复的时间格式函数
+		state.form.startTime = formatDateTime();
+		console.log('生成的时间字符串:', state.form.startTime);
 		
 		// 停止当前视频播放
 		stopVideoPlayback();
+		
+		// 清空之前的视频路径
+		state.video_path = '';
+		isVideoActive.value = false;
 
-		// 确保Socket已连接，未连接则重连
+		// 确保Socket已连接
 		if (!socketService.isConnected) {
-			await socketService.connect();
-			ElMessage.info('正在建立实时进度连接...');
+			try {
+				socketService.connect();
+				// 等待连接建立
+				await new Promise(resolve => setTimeout(resolve, 1000));
+				ElMessage.info('已建立实时进度连接');
+			} catch (error) {
+				console.warn('Socket连接失败，将继续检测但不显示进度:', error);
+				ElMessage.warning('实时进度连接失败，但视频检测将继续进行');
+			}
 		}
 
-		console.log('杂草检测视频请求参数:', state.form);
-		// 新增：通过Socket发送处理指令，触发后端视频检测
-		socketService.emit('process_video', state.form); 
-
-		// 拼接Flask检测请求地址（使用替换后的IP）
-		const queryParams = new URLSearchParams({
-  		  username: state.form.username,
-  		  conf: state.form.conf.toString(),
-  		  startTime: state.form.startTime,
-  		  inputVideo: state.form.inputVideo // 传入已替换IP的视频地址
-		}).toString();
+		console.log('杂草检测视频请求参数:', JSON.stringify(state.form));
 		
-		// 设置结果视频路径
-		state.video_path = `${flaskPredictUrl.value}?${queryParams}&t=${Date.now()}`;
-		
-		// 重置视频加载尝试次数
-		videoLoadAttempts.value = 0;
+		// 通过Socket发送处理指令，触发后端视频检测
+		socketService.emit('process_video', state.form);
 		
 		// 显示进度条
 		state.isShow = true;
 		state.percentage = 0;
 		
-		ElMessage.info('正在加载杂草检测视频，请稍候...');
+		ElMessage.info('开始处理杂草检测视频，请稍候...');
 		statusMessage.value = '正在处理视频检测，请等待进度完成';
 		statusType.value = 'info';
 		
+		// 设置超时保护
+		setTimeout(() => {
+			if (state.isDetecting && state.percentage < 100) {
+				ElMessage.warning('检测时间较长，请耐心等待...');
+			}
+		}, 15000);
+		
 	} catch (error) {
 		console.error('开始视频检测失败:', error);
-		ElMessage.error('开始视频检测失败');
+		ElMessage.error(`开始视频检测失败: ${error instanceof Error ? error.message : '未知错误'}`);
 		statusMessage.value = '开始视频检测失败，请重试';
 		statusType.value = 'error';
 		state.isDetecting = false;
@@ -325,14 +411,38 @@ const resetPageState = () => {
 	if (uploadFile.value) {
 		uploadFile.value.clearFiles();
 	}
+	
 	console.log('视频检测页面状态已重置');
+};
+
+// 检查Flask连接状态
+const checkFlaskConnection = async () => {
+	try {
+		const response = await request.get('/flask/test');
+		if (response && response.status === 200) {
+			console.log('Flask连接正常:', response);
+			statusMessage.value = 'Flask服务连接正常，可以开始检测';
+			statusType.value = 'success';
+			return true;
+		} else {
+			statusMessage.value = 'Flask服务异常，请检查后重试';
+			statusType.value = 'warning';
+			return false;
+		}
+	} catch (error) {
+		console.error('Flask连接失败:', error);
+		ElMessage.error('Flask服务未启动，请确保已启动Flask后端服务');
+		statusMessage.value = 'Flask服务未启动，无法进行视频检测';
+		statusType.value = 'error';
+		return false;
+	}
 };
 
 // 页面激活时：重置状态
 onActivated(() => {
 	console.log('视频检测页面激活');
 	resetPageState();
-	state.form.conf = conf.value / 100;
+	state.form.conf = parseFloat((conf.value / 100).toFixed(2));
 });
 
 // 页面失活时：销毁资源
@@ -345,34 +455,26 @@ onDeactivated(() => {
 onUnmounted(() => {
 	console.log('视频检测页面卸载');
 	resetPageState();
+	// 断开Socket连接
+	socketService.disconnect();
 });
 
 // 页面挂载初始化
-onMounted(() => {
-  // 检查Flask服务是否可用
-  checkFlaskConnection();
-  // 初始化置信度
-  state.form.conf = conf.value / 100;
-  // 初始化Socket监听（全局一次）
-  initSocketListener();
-  console.log('Flask检测地址:', flaskPredictUrl.value);
-  console.log('视频上传地址:', uploadAction.value);
+onMounted(async () => {
+	// 初始化置信度
+	state.form.conf = parseFloat((conf.value / 100).toFixed(2));
+	
+	// 初始化Socket监听
+	initSocketListener();
+	
+	// 检查Flask服务是否可用
+	const isConnected = await checkFlaskConnection();
+	if (isConnected) {
+		console.log('Flask检测服务准备就绪');
+	} else {
+		ElMessage.warning('请确保Flask服务正在运行 (端口5000)');
+	}
 });
-
-// 添加Flask连接检查方法
-const checkFlaskConnection = async () => {
-  try {
-    const response = await request.get(`http://${currentHost}:5000/flask/test`); // 适配当前IP
-    console.log('Flask连接正常:', response);
-    statusMessage.value = 'Flask服务连接正常';
-    statusType.value = 'success';
-  } catch (error) {
-    console.error('Flask连接失败:', error);
-    ElMessage.error('Flask服务未启动，请确保已启动Flask后端服务');
-    statusMessage.value = 'Flask服务未启动，无法进行视频检测';
-    statusType.value = 'error';
-  }
-};
 </script>
 
 <style scoped lang="scss">

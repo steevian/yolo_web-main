@@ -14,17 +14,15 @@ import torch
 import numpy as np
 import sqlite3
 import uuid
-import shutil  # 补充缺失的导入，解决文件复制/删除报错
+import shutil
 from datetime import datetime
 from flask import Flask, Response, request, jsonify, send_from_directory
 from ultralytics import YOLO
 from flask_socketio import SocketIO, emit
-from predict.predictImg import ImagePredictor
 import jwt
 import hashlib
 from user_manager import UserManager
-from flask_cors import CORS  # 导入跨域模块
-
+from flask_cors import CORS
 
 class DatabaseManager:
     """SQLite 数据库管理器"""
@@ -356,7 +354,7 @@ class VideoProcessingApp:
         # 全局开启跨域，解决前端跨域请求问题
         CORS(self.app, supports_credentials=True)
         # 核心优化2：去掉async_mode='gevent'，解决启动异步模式报错
-        self.socketio = SocketIO(self.app, cors_allowed_origins="*")
+        self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
         self.host = host
         self.port = port
         
@@ -366,7 +364,7 @@ class VideoProcessingApp:
         
         # 核心锚点：获取Flask项目根目录（所有路径基于此）
         self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-        # 创建必要目录（基于项目根目录）
+        # 创建必要目录（基于Flask项目根目录）
         self.create_directories()
         
         # 初始化数据库管理器
@@ -402,6 +400,8 @@ class VideoProcessingApp:
         self.recording = False
         # 新增：视频处理进度缓存，用于Socket实时推送
         self.video_process_progress = 0
+        # 新增：当前处理的视频线程
+        self.current_video_thread = None
 
     def create_directories(self):
         """创建必要的目录（基于Flask项目根目录）"""
@@ -448,7 +448,8 @@ class VideoProcessingApp:
         
         # 文件上传接口
         self.app.add_url_rule('/flask/upload', 'upload_file', self.upload_file, methods=['POST'])
-        self.app.add_url_rule('/upload', 'upload', self.upload, methods=['POST'])  # 兼容原前端/upload请求
+        self.app.add_url_rule('/upload', 'upload', self.upload_file, methods=['POST'])  # 兼容原前端/upload请求
+        self.app.add_url_rule('/files/upload', 'files_upload', self.upload_file, methods=['POST'])  # 兼容前端配置
         
         # 图片检测核心接口（兼容/predict和/predictImg，避免前端路径错误）
         self.app.add_url_rule('/predict', 'predict', self.predictImg, methods=['POST'])
@@ -504,23 +505,21 @@ class VideoProcessingApp:
         def handle_process_video(data):
             """接收前端视频处理请求，触发检测并实时推送进度"""
             try:
-                # 重置进度
-                self.video_process_progress = 0
-                # 打印接收的参数，调试用
                 print(f"\n📹 收到前端视频处理请求 >> {data}")
+                
                 # 提取前端参数
                 username = data.get('username', 'default_user')
                 input_video = data.get('inputVideo', '')
                 conf = float(data.get('conf', 0.5))
                 start_time = data.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-
-                # 校验视频地址
+                
+                # 验证参数
                 if not input_video:
                     emit('message', {'data': '视频地址为空，检测失败！'})
                     emit('progress', 100)
                     return
-
-                # 下载网络视频到本地（和原有predictVideo逻辑一致）
+                
+                # 处理视频路径
                 video_path = input_video
                 if video_path.startswith(('http://', 'https://')):
                     local_path = self.download_file(video_path, os.path.join(self.paths['uploads'], 'videos/'))
@@ -529,56 +528,209 @@ class VideoProcessingApp:
                         emit('progress', 100)
                         return
                     video_path = local_path
-
-                # 校验视频文件是否存在
+                elif video_path.startswith('/'):
+                    video_path = os.path.join(self.BASE_DIR, video_path.lstrip('/'))
+                
+                # 验证视频文件
                 if not os.path.exists(video_path):
                     emit('message', {'data': f'视频文件不存在：{video_path}'})
                     emit('progress', 100)
                     return
-
-                # 打开视频，获取总帧数（计算真实进度）
-                cap = cv2.VideoCapture(video_path)
-                if not cap.isOpened():
-                    emit('message', {'data': '无法打开视频文件，检测终止！'})
-                    emit('progress', 100)
-                    return
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                cap.release()  # 先释放，后续predictVideo会重新打开
-
-                # 校验总帧数
-                if total_frames == 0:
-                    emit('message', {'data': '视频文件损坏，无有效帧！'})
-                    emit('progress', 100)
-                    return
-
-                print(f"📹 视频检测开始 >> 总帧数：{total_frames}，置信度：{conf}")
-                emit('message', {'data': f'开始视频检测，共{total_frames}帧，请等待...'})
-
-                # 核心：循环推送真实进度（和predictVideo的实际检测同步）
-                def push_progress():
-                    while self.video_process_progress < 100:
-                        # 推送当前进度给前端
-                        emit('progress', self.video_process_progress)
-                        # 微延时，避免推送过快
-                        import time
-                        time.sleep(0.1)
-                    # 最终推送100%
-                    emit('progress', 100)
-                    print(f"📹 视频检测进度推送完成 >> 100%")
-
-                # 启动进度推送线程（不阻塞主检测逻辑）
+                
+                # 启动视频处理线程
                 import threading
-                progress_thread = threading.Thread(target=push_progress)
-                progress_thread.daemon = True
-                progress_thread.start()
-
+                thread = threading.Thread(
+                    target=self.process_video_with_progress,
+                    args=(video_path, username, conf, start_time)
+                )
+                thread.daemon = True
+                thread.start()
+                self.current_video_thread = thread
+                
+                emit('message', {'data': '开始处理视频，请等待...'})
+                
             except Exception as e:
-                # 异常处理：推送100%进度，释放前端检测锁
-                self.video_process_progress = 100
-                emit('progress', 100)
-                emit('message', {'data': f'视频检测初始化失败：{str(e)}'})
                 print(f"❌ 视频处理指令监听出错：{str(e)}")
+                emit('message', {'data': f'视频处理初始化失败：{str(e)}'})
+                emit('progress', 100)
         # ========== WebSocket指令监听结束 ==========
+
+    def serve_upload(self, filename):
+        """提供上传文件访问"""
+        try:
+            # 构建完整的上传文件路径
+            uploads_dir = self.paths['uploads']
+            file_path = os.path.join(uploads_dir, filename)
+            
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                return f"文件不存在: {filename}", 404
+            
+            return send_from_directory(uploads_dir, filename, as_attachment=False)
+        except Exception as e:
+            print(f"提供上传文件访问失败: {str(e)}")
+            return f"服务错误: {str(e)}", 500
+    
+    def serve_result(self, filename):
+        """提供结果文件访问"""
+        try:
+            # 构建完整的结果文件路径
+            results_dir = self.paths['results']
+            file_path = os.path.join(results_dir, filename)
+            
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                return f"结果文件不存在: {filename}", 404
+            
+            return send_from_directory(results_dir, filename, as_attachment=False)
+        except Exception as e:
+            print(f"提供结果文件访问失败: {str(e)}")
+            return f"服务错误: {str(e)}", 500
+    
+    def serve_runs(self, filename):
+        """提供runs目录文件访问（解决检测结果图片404）"""
+        try:
+            # 构建完整的runs目录路径
+            runs_dir = os.path.join(self.BASE_DIR, 'runs')
+            file_path = os.path.join(runs_dir, filename)
+            
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                return f"运行文件不存在: {filename}", 404
+            
+            return send_from_directory(runs_dir, filename, as_attachment=False)
+        except Exception as e:
+            print(f"提供运行文件访问失败: {str(e)}")
+            return f"服务错误: {str(e)}", 500
+
+    # 新增：带进度反馈的视频处理函数
+    def process_video_with_progress(self, video_path, username, conf, start_time):
+        """处理视频并实时推送进度"""
+        try:
+            print(f"🎬 开始处理视频: {video_path}")
+            
+            # 打开视频文件
+            cap = cv2.VideoCapture(video_path)
+            if not cap.isOpened():
+                self.socketio.emit('message', {'data': '无法打开视频文件'})
+                self.socketio.emit('progress', 100)
+                return
+            
+            # 获取视频信息
+            total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            fps = int(cap.get(cv2.CAP_PROP_FPS)) or 25
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            
+            if total_frames == 0:
+                self.socketio.emit('message', {'data': '视频无有效帧'})
+                self.socketio.emit('progress', 100)
+                cap.release()
+                return
+            
+            print(f"📊 视频信息: {total_frames}帧, {fps}FPS, {width}x{height}")
+            self.socketio.emit('message', {'data': f'视频分析: {total_frames}帧, 开始处理...'})
+            
+            # 初始化输出视频
+            output_dir = os.path.join(self.BASE_DIR, "runs/video")
+            os.makedirs(output_dir, exist_ok=True)
+            output_path = os.path.join(output_dir, f"processed_{int(datetime.now().timestamp())}.avi")
+            fourcc = cv2.VideoWriter_fourcc(*'XVID')
+            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+            
+            # 处理视频帧
+            current_frame = 0
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                
+                current_frame += 1
+                
+                # 更新进度
+                progress = int((current_frame / total_frames) * 100)
+                self.video_process_progress = progress
+                self.socketio.emit('progress', progress)
+                
+                # 每10帧发送一次状态更新
+                if current_frame % 10 == 0:
+                    self.socketio.emit('message', {'data': f'正在处理第 {current_frame}/{total_frames} 帧...'})
+                
+                # 执行杂草检测
+                results = self.weed_model.predict(
+                    source=frame,
+                    conf=conf,
+                    show=False,
+                    device='cpu',
+                    font=self.system_font_path
+                )
+                
+                # 绘制检测结果
+                processed_frame = results[0].plot(font=self.system_font_path)
+                out.write(processed_frame)
+            
+            # 释放资源
+            cap.release()
+            out.release()
+            
+            # 转换为MP4格式
+            final_output = os.path.join(output_dir, f"final_{int(datetime.now().timestamp())}.mp4")
+            try:
+                subprocess.run([
+                    'ffmpeg', '-i', output_path, 
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '128k',
+                    '-y', final_output
+                ], capture_output=True, timeout=30)
+            except subprocess.TimeoutExpired:
+                print("视频转换超时，使用原始文件")
+                final_output = output_path
+            except Exception as e:
+                print(f"视频转换失败: {str(e)}")
+                final_output = output_path
+            
+            # 复制到results目录
+            result_video_name = f"video_{int(datetime.now().timestamp())}.mp4"
+            result_video_dir = os.path.join(self.paths['results'], 'videos')
+            result_video_path = os.path.join(result_video_dir, result_video_name)
+            os.makedirs(result_video_dir, exist_ok=True)
+            if os.path.exists(final_output):
+                shutil.copy(final_output, result_video_path)
+            elif os.path.exists(output_path):
+                shutil.copy(output_path, result_video_path)
+            
+            # 构建访问URL
+            result_url = f"/results/videos/{result_video_name}"
+            
+            # 保存记录到数据库
+            record_data = {
+                "username": username,
+                "inputVideo": video_path,
+                "outVideo": result_url,
+                "conf": conf,
+                "startTime": start_time
+            }
+            self.db_manager.add_video_record(record_data)
+            
+            # 通知前端处理完成
+            self.socketio.emit('video_result', {'video_path': result_url})
+            self.socketio.emit('message', {'data': '视频检测完成！'})
+            self.socketio.emit('progress', 100)
+            
+            # 清理临时文件
+            for temp_file in [output_path, final_output]:
+                if os.path.exists(temp_file) and temp_file != result_video_path:
+                    try:
+                        os.remove(temp_file)
+                    except:
+                        pass
+                        
+            print(f"✅ 视频处理完成: {result_url}")
+            
+        except Exception as e:
+            print(f"❌ 视频处理失败: {str(e)}")
+            self.socketio.emit('message', {'data': f'视频处理失败: {str(e)}'})
+            self.socketio.emit('progress', 100)
 
     # 核心优化3：重写run方法，只显示127.0.0.1和192.168.0.101，隐藏0.0.0.0
     def run(self):
@@ -605,22 +757,6 @@ class VideoProcessingApp:
         """根路径测试接口"""
         return jsonify({"code":0, "msg":"Flask杂草检测服务正常运行", "model_path":self.weed_model_path, "base_dir":self.BASE_DIR})
     
-    def upload(self):
-        """兼容原前端的/upload接口"""
-        return self.upload_file()
-
-    def serve_upload(self, filename):
-        """提供上传文件访问"""
-        return send_from_directory(self.paths['uploads'], filename, as_attachment=False)
-    
-    def serve_result(self, filename):
-        """提供结果文件访问"""
-        return send_from_directory(self.paths['results'], filename, as_attachment=False)
-    
-    def serve_runs(self, filename):
-        """提供runs目录文件访问（解决检测结果图片404）"""
-        return send_from_directory(os.path.join(self.BASE_DIR, 'runs'), filename, as_attachment=False)
-
     def upload_file(self):
         """文件上传接口（替代原来的SpringBoot上传）"""
         try:
@@ -1538,8 +1674,6 @@ class VideoProcessingApp:
 if __name__ == '__main__':
     # 初始化并启动Flask杂草检测服务
     try:
-        # 安装必要依赖（可选，首次运行可取消注释）
-        # subprocess.run(["pip", "install", "ultralytics", "flask", "flask-cors", "flask-socketio", "opencv-python", "torch", "requests"])
         weed_detection_app = VideoProcessingApp()
         weed_detection_app.run()
     except Exception as e:
