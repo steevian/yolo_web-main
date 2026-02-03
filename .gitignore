@@ -70,3 +70,10 @@ yarn-error.log*
 *.avi
 *.mov
 *.flv
+
+# 忽略检测生成的图片（匹配你的图片命名格式）
+result_*.jpg
+*.png  # 如果还有其他格式的检测图，也可以直接忽略
+
+# 忽略数据库文件（如weed_detection.db）
+*.db
