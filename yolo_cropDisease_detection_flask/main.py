@@ -471,6 +471,8 @@ class VideoProcessingApp:
         self.camera_writer = None
         self.recording = False
         self.camera_lock = False  # 摄像头锁，防止重复打开
+        self.camera_data = {}  # 新增：存储摄像头检测参数
+        self.current_camera_video = None  # 新增：当前摄像头视频路径
         
         self.setup_routes()
         self.data = {}
@@ -1325,24 +1327,33 @@ class VideoProcessingApp:
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     def predictCamera(self):
-        """摄像头实时杂草检测接口（优化版）"""
+        """摄像头实时杂草检测接口（修复版）- 在流结束时自动保存记录"""
         print("📹 开始摄像头检测...")
         
         # 检查摄像头是否已被占用
         if self.camera_lock:
             print("⚠️ 摄像头正在被其他进程占用")
             self.socketio.emit('message', {'data': '摄像头正在被其他进程占用，请稍后再试'})
-            return Response("摄像头正在被其他进程占用", status=409)  # 409 Conflict
+            return Response("摄像头正在被其他进程占用", status=409)
         
         try:
             self.camera_lock = True
             
-            self.data.clear()
-            self.data.update({
-                "username": request.args.get('username', ''),
+            # 保存用户参数到实例变量，以便后续使用
+            self.camera_data = {
+                "username": request.args.get('username', 'unknown'),
                 "conf": float(request.args.get('conf', 0.5)),
                 "startTime": request.args.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-            })
+            }
+            
+            # 生成唯一的视频文件名，避免冲突
+            video_timestamp = int(datetime.now().timestamp())
+            video_filename = f"camera_{video_timestamp}.avi"
+            camera_output_path = os.path.join(os.path.dirname(self.paths['camera_output']), video_filename)
+            
+            print(f"🎬 摄像头检测开始，用户名: {self.camera_data['username']}, 置信度: {self.camera_data['conf']}")
+            print(f"📁 视频将保存到: {camera_output_path}")
+            
             self.recording = True
 
             # 初始化电脑摄像头
@@ -1361,14 +1372,17 @@ class VideoProcessingApp:
             print(f"✅ 摄像头已打开，分辨率: 640x480, FPS: 20")
             self.socketio.emit('message', {'data': '摄像头已打开，开始实时杂草检测...'})
             
-            # 初始化视频写入器（项目内路径）
-            os.makedirs(os.path.dirname(self.paths['camera_output']), exist_ok=True)
+            # 初始化视频写入器（使用唯一文件名）
+            os.makedirs(os.path.dirname(camera_output_path), exist_ok=True)
             self.camera_writer = cv2.VideoWriter(
-                self.paths['camera_output'],
+                camera_output_path,
                 cv2.VideoWriter_fourcc(*'XVID'),
                 20,
                 (640, 480)
             )
+            
+            # 存储视频路径以便后续保存
+            self.current_camera_video = camera_output_path
 
             def generate():
                 frame_count = 0
@@ -1385,7 +1399,7 @@ class VideoProcessingApp:
                         results = self.weed_model.predict(
                             source=frame,
                             imgsz=640,
-                            conf=self.data['conf'],
+                            conf=self.camera_data['conf'],
                             show=False,
                             half=False,
                             device='cpu',
@@ -1409,6 +1423,11 @@ class VideoProcessingApp:
                     self.socketio.emit('message', {'data': f'摄像头检测异常: {str(e)}'})
                 finally:
                     print("🛑 摄像头检测流结束，清理资源...")
+                    
+                    # 🔥 核心修复：在流结束时立即保存记录
+                    if frame_count > 0:  # 确保有处理过帧
+                        self.save_camera_record_now()
+                    
                     self.cleanup_camera_resources()
 
             return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -1418,80 +1437,115 @@ class VideoProcessingApp:
             self.camera_lock = False
             return Response(f"摄像头检测初始化失败: {str(e)}", status=500)
 
-    def stopCamera(self):
-        """停止摄像头杂草检测（优化版）"""
-        print("🛑 收到停止摄像头检测请求")
-    
+    def save_camera_record_now(self):
+        """立即保存摄像头检测记录"""
         try:
-            # 1. 停止录制标志
-            self.recording = False
-        
-            # 2. 强制释放摄像头资源
-            success = self.cleanup_camera_resources()
-        
-            # 🔥 关键新增：保存摄像头检测记录
-            if success and os.path.exists(self.paths['camera_output']):
+            if not hasattr(self, 'current_camera_video') or not self.current_camera_video:
+                print("⚠️ 没有当前摄像头视频文件，跳过保存记录")
+                return
+            
+            video_path = self.current_camera_video
+            
+            if not os.path.exists(video_path):
+                print(f"⚠️ 摄像头视频文件不存在: {video_path}")
+                return
+            
+            print(f"💾 正在保存摄像头记录，视频文件: {video_path}")
+            
+            # 生成结果视频文件名
+            result_video_name = f"camera_{int(datetime.now().timestamp())}.mp4"
+            result_video_dir = os.path.join(self.paths['results'], 'videos')
+            result_video_path = os.path.join(result_video_dir, result_video_name)
+            os.makedirs(result_video_dir, exist_ok=True)
+            
+            # 转换视频格式为MP4
+            try:
+                print(f"🔄 转换视频格式: {video_path} -> {result_video_path}")
+                subprocess.run([
+                    'ffmpeg', '-i', video_path,
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '128k',
+                    '-y', result_video_path
+                ], capture_output=True, timeout=30, check=True)
+                print(f"✅ 视频格式转换成功")
+            except subprocess.CalledProcessError as e:
+                print(f"❌ 视频格式转换失败: {e}")
+                # 如果转换失败，尝试直接复制
                 try:
-                    # 生成结果视频文件名
-                    result_video_name = f"camera_{int(datetime.now().timestamp())}.mp4"
-                    result_video_dir = os.path.join(self.paths['results'], 'videos')
-                    result_video_path = os.path.join(result_video_dir, result_video_name)
-                    os.makedirs(result_video_dir, exist_ok=True)
-                
-                    # 转换为MP4格式（如果需要）
-                    input_video = self.paths['camera_output']
-                    if input_video.endswith('.avi'):
-                        try:
-                            subprocess.run([
-                                'ffmpeg', '-i', input_video,
-                                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
-                                '-c:a', 'aac', '-b:a', '128k',
-                                '-y', result_video_path
-                            ], capture_output=True, timeout=30)
-                        except Exception as e:
-                            # 如果转换失败，直接复制
-                            shutil.copy(input_video, result_video_path)
-                    else:
-                        shutil.copy(input_video, result_video_path)
-                
-                    # 构建访问URL
-                    result_url = f"/results/videos/{result_video_name}"
-                
-                    # 保存记录到数据库
-                    record_data = {
-                        "username": self.data.get("username", "unknown"),
-                        "outVideo": result_url,
-                        "conf": self.data.get("conf", 0.5),
-                        "startTime": self.data.get("startTime", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                    }
-                
-                    print(f"📊 准备保存摄像头记录: {record_data}")
-                    self.db_manager.add_camera_record(record_data)
-                    print(f"✅ 摄像头检测记录已保存: {result_url}")
-                
-                except Exception as e:
-                    print(f"❌ 保存摄像头检测记录失败: {e}")
-        
-            if success:
-                print("✅ 摄像头检测已停止，资源已释放")
-                response = {
-                    "status": 200,
-                    "message": "摄像头杂草检测已停止，资源已释放，记录已保存",
-                    "code": 0
+                    shutil.copy(video_path, result_video_path)
+                    print(f"📄 已直接复制视频文件")
+                except Exception as copy_error:
+                    print(f"❌ 复制视频文件失败: {copy_error}")
+                    return
+            except Exception as e:
+                print(f"❌ FFmpeg转换异常: {e}")
+                return
+            
+            # 构建访问URL
+            result_url = f"/results/videos/{result_video_name}"
+            
+            # 保存记录到数据库
+            if hasattr(self, 'camera_data'):
+                record_data = {
+                    "username": self.camera_data.get("username", "unknown"),
+                    "outVideo": result_url,
+                    "conf": self.camera_data.get("conf", 0.5),
+                    "startTime": self.camera_data.get("startTime", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                 }
             else:
-                print("⚠️ 摄像头资源释放部分失败")
-                response = {
-                    "status": 200,
-                    "message": "摄像头检测已停止，部分资源释放失败",
-                    "code": 1
+                # 如果 camera_data 不存在，使用默认值
+                record_data = {
+                    "username": "unknown",
+                    "outVideo": result_url,
+                    "conf": 0.5,
+                    "startTime": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 }
+            
+            print(f"📊 准备保存摄像头记录到数据库: {record_data}")
+            
+            try:
+                record_id = self.db_manager.add_camera_record(record_data)
+                print(f"✅ 摄像头检测记录已保存到数据库，ID: {record_id}")
+                
+                # 发送WebSocket通知
+                self.socketio.emit('message', {'data': f'摄像头检测记录已保存 (ID: {record_id})'})
+                
+            except Exception as db_error:
+                print(f"❌ 数据库保存失败: {db_error}")
+                # 即使数据库保存失败，也要保留视频文件
+            
+            # 清理临时文件（但不删除结果文件）
+            try:
+                if os.path.exists(video_path):
+                    os.remove(video_path)
+                    print(f"🗑️ 已清理临时视频文件: {video_path}")
+            except Exception as e:
+                print(f"⚠️ 清理临时文件失败: {e}")
+                
+            # 重置当前视频路径
+            self.current_camera_video = None
+            
+        except Exception as e:
+            print(f"❌ 保存摄像头记录失败: {e}")
+
+    def stopCamera(self):
+        """停止摄像头杂草检测（简化为仅设置标志）"""
+        print("🛑 收到停止摄像头检测请求")
         
-            # 3. 发送WebSocket通知
-            self.socketio.emit('message', {'data': '摄像头检测已停止，记录已保存'})
-        
+        try:
+            # 只需设置停止标志，视频流会自然结束并保存记录
+            self.recording = False
+            
+            response = {
+                "status": 200,
+                "message": "已发送停止信号，摄像头检测将停止并保存记录",
+                "code": 0
+            }
+            
+            self.socketio.emit('message', {'data': '摄像头检测即将停止...'})
+            
             return jsonify(response)
-        
+            
         except Exception as e:
             print(f"❌ 停止摄像头检测异常: {e}")
             return jsonify({
