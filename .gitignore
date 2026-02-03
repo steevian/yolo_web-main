@@ -160,3 +160,8 @@ test_*.py
 local_*.py
 *.sh                    # 若有通用部署脚本，可改为 !deploy.sh
 *.bat
+
+# 忽略虚拟环境目录（精准匹配你的路径）
+yolo_cropDisease_detection_flask/weed1_env/
+# 忽略图片文件夹
+imgs/
