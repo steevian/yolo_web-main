@@ -50,6 +50,39 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
           changeOrigin: true,
           secure: false,
         },
+          // 🔥 修复：处理包含绝对路径的图片请求
+        '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_cropDisease_detection_flask': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => {
+            // 移除前缀，保留相对路径
+            const cleanPath = path.replace(
+              '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_cropDisease_detection_flask/', 
+              '/'
+            );
+            console.log('📸 转换绝对路径:', path, '->', cleanPath);
+            return cleanPath;
+          }
+        },
+  
+        // 同时添加通用路径处理
+        '/uploads/**': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => {
+            // 如果路径包含Windows绝对路径，提取相对部分
+            if (path.includes('D:/') || path.includes('d:/')) {
+              const match = path.match(/\/uploads\/([Dd]:\/[^/]+\/)(.+)/);
+              if (match) {
+                const [, , relativePath] = match;
+                return `/${relativePath}`;
+              }
+            }
+            return path;
+          }
+        },
         
          // 2.3新增：直接代理/stopCamera
         '/stopCamera': {

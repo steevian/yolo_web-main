@@ -13,53 +13,137 @@
 					</el-icon>
 					查询
 				</el-button>
+				<el-button 
+					size="small" 
+					type="info" 
+					@click="showDebugPanel = !showDebugPanel"
+					style="margin-left: 10px;"
+				>
+					{{ showDebugPanel ? '隐藏调试' : '显示调试' }}
+				</el-button>
 			</div>
-			<el-table :data="state.tableData.data" style="width: 100%">
+			
+			<!-- 调试面板 -->
+			<el-collapse v-model="activeDebugPanel" v-if="showDebugPanel" class="mt15">
+				<el-collapse-item title="路径转换调试" name="1">
+					<el-table :data="state.tableData.data.slice(0, 3)" size="small">
+						<el-table-column prop="input_img" label="原始路径" width="200">
+							<template #default="{ row }">
+								<div style="font-size: 10px; word-break: break-all;">{{ row.input_img }}</div>
+							</template>
+						</el-table-column>
+						<el-table-column label="转换后URL" width="200">
+							<template #default="{ row }">
+								<div style="font-size: 10px; word-break: break-all;">{{ getImageUrl(row.input_img) }}</div>
+							</template>
+						</el-table-column>
+						<el-table-column label="预览" width="100">
+							<template #default="{ row }">
+								<el-image 
+									:src="getImageUrl(row.input_img)"
+									style="width: 80px; height: 60px;"
+									fit="cover"
+								/>
+							</template>
+						</el-table-column>
+					</el-table>
+				</el-collapse-item>
+			</el-collapse>
+			
+			<el-table :data="state.tableData.data" v-loading="state.tableData.loading" style="width: 100%">
 				<el-table-column type="expand">
 					<template #default="props">
 						<div m="4">
 							<p style="margin-left: 20px; font-size: 16px; font-weight: 800;">详细识别结果：</p>
-							<el-table :data="props.row.family">
+							<el-table :data="props.row.family" v-if="props.row.family && props.row.family.length > 0">
 								<el-table-column prop="label" label="识别结果" align="center" />
 								<el-table-column prop="confidence" label="置信度" show-overflow-tooltip
 									align="center">
 									<template #default="{ row }">
-										{{ (row.confidence * 100).toFixed(2) }}%
+										{{ formatConfidence(row.confidence) }}
 									</template>
 								</el-table-column>
-								<el-table-column prop="startTime" label="识别时间" align="center" />
+								<el-table-column prop="detectionTime" label="识别时间" align="center" />
 							</el-table>
+							<div v-else style="text-align: center; padding: 20px; color: #999;">
+								无详细检测结果
+							</div>
 						</div>
 					</template>
 				</el-table-column>
 				<el-table-column prop="num" label="序号" width="80" align="center" />
 				<el-table-column prop="input_img" label="原始图片" width="120" align="center">
 					<template #default="scope">
-						<img :src="scope.row.input_img" width="120" height="80" style="object-fit: cover;" />
+						<el-image 
+							:src="getImageUrl(scope.row.input_img)" 
+							:preview-src-list="[getImageUrl(scope.row.input_img)]"
+							fit="cover"
+							style="width: 120px; height: 80px; border-radius: 4px;"
+							hide-on-click-modal
+						>
+							<template #placeholder>
+								<div class="image-placeholder">
+									<el-icon><ele-Loading /></el-icon>
+									<div>加载中...</div>
+								</div>
+							</template>
+							<template #error>
+								<div class="image-error">
+									<el-icon><ele-Picture /></el-icon>
+									<div>加载失败</div>
+									<small>{{ getImageError(scope.row.input_img) }}</small>
+								</div>
+							</template>
+						</el-image>
 					</template>
 				</el-table-column>
 				<el-table-column prop="out_img" label="预测图片" width="120" align="center">
 					<template #default="scope">
-						<img :src="scope.row.out_img" width="120" height="80" style="object-fit: cover;" v-if="scope.row.out_img" />
-						<span v-else>无结果图</span>
+						<el-image 
+							v-if="scope.row.out_img"
+							:src="getImageUrl(scope.row.out_img)" 
+							:preview-src-list="[getImageUrl(scope.row.out_img)]"
+							fit="cover"
+							style="width: 120px; height: 80px; border-radius: 4px;"
+							lazy
+							hide-on-click-modal
+						>
+							<template #placeholder>
+								<div class="image-placeholder">
+									<el-icon><ele-Loading /></el-icon>
+									<div>加载中...</div>
+								</div>
+							</template>
+							<template #error>
+								<div class="image-error">
+									<el-icon><ele-Picture /></el-icon>
+									<div>加载失败</div>
+								</div>
+							</template>
+						</el-image>
+						<span v-else class="no-image">无结果图</span>
 					</template>
 				</el-table-column>
 				<el-table-column prop="confidence" label="置信度" show-overflow-tooltip align="center">
 					<template #default="{ row }">
-						{{ (row.confidence * 100).toFixed(2) }}%
+						{{ formatConfidence(row.confidence) }}
 					</template>
 				</el-table-column>
 				<el-table-column prop="conf" label="最小阈值" show-overflow-tooltip align="center">
 					<template #default="{ row }">
-						{{ (row.conf * 100).toFixed(0) }}%
+						{{ (parseFloat(row.conf || 0.5) * 100).toFixed(0) }}%
 					</template>
 				</el-table-column>
 				<el-table-column prop="all_time" label="总用时" show-overflow-tooltip align="center">
 					<template #default="{ row }">
-						{{ row.all_time }}秒
+						{{ formatTime(row.all_time) }}
 					</template>
 				</el-table-column>
-				<el-table-column prop="start_time" label="识别时间" width="200" align="center" />
+				<el-table-column prop="start_time" label="识别时间" width="200" align="center">
+					<template #default="{ row }">
+						{{ formatDateTime(row.start_time) }}
+					</template>
+				</el-table-column>
 				<el-table-column prop="username" label="识别用户" show-overflow-tooltip align="center"></el-table-column>
 				<el-table-column label="操作" width="80">
 					<template #default="scope">
@@ -67,16 +151,22 @@
 					</template>
 				</el-table-column>
 			</el-table>
-			<el-pagination @size-change="onHandleSizeChange" @current-change="onHandleCurrentChange" class="mt15"
-				:pager-count="5" :page-sizes="[10, 20, 30]" v-model:current-page="state.tableData.param.pageNum"
-				background v-model:page-size="state.tableData.param.pageSize"
+			<el-pagination 
+				@size-change="onHandleSizeChange" 
+				@current-change="onHandleCurrentChange" 
+				class="mt15"
+				:pager-count="5" 
+				:page-sizes="[10, 20, 30]" 
+				v-model:current-page="state.tableData.param.pageNum"
+				background 
+				v-model:page-size="state.tableData.param.pageSize"
 				:layout="state.tableData.total > 0 ? 'total, sizes, prev, pager, next, jumper' : ''" 
 				:total="state.tableData.total"
 				:hide-on-single-page="state.tableData.total <= state.tableData.param.pageSize">
 			</el-pagination>
 			
 			<!-- 空数据提示 -->
-			<el-empty v-if="state.tableData.data.length === 0" description="暂无检测记录" :image-size="200">
+			<el-empty v-if="state.tableData.data.length === 0 && !state.tableData.loading" description="暂无检测记录" :image-size="200">
 				<template #image>
 					<el-icon size="100" color="#c0c4cc">
 						<ele-Picture />
@@ -88,9 +178,9 @@
 </template>
 
 <script setup lang="ts" name="systemRole">
-import { reactive, onMounted, watch } from 'vue';
+import { reactive, onMounted, watch, ref } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
-import { Picture } from '@element-plus/icons-vue';
+import { Picture, Loading as EleLoading } from '@element-plus/icons-vue';
 import request from '/@/utils/request';
 import { useUserInfo } from '/@/stores/userInfo';
 import { storeToRefs } from 'pinia';
@@ -111,6 +201,219 @@ const state = reactive({
 		},
 	},
 });
+
+// 调试面板状态
+const showDebugPanel = ref(false);
+const activeDebugPanel = ref(['1']);
+
+// ====================== 工具函数 ======================
+
+// 工具函数：格式化置信度
+const formatConfidence = (confidence: any): string => {
+	if (confidence === null || confidence === undefined || confidence === '') {
+		return '0%';
+	}
+	
+	try {
+		// 如果是字符串，尝试解析
+		if (typeof confidence === 'string') {
+			// 尝试解析为JSON
+			try {
+				const parsed = JSON.parse(confidence);
+				if (Array.isArray(parsed)) {
+					// 取数组第一个值或平均值
+					if (parsed.length > 0) {
+						const avg = parsed.reduce((a: number, b: number) => a + b, 0) / parsed.length;
+						return (avg * 100).toFixed(2) + '%';
+					}
+					return '0%';
+				}
+				// 如果是数字
+				return (parseFloat(parsed) * 100).toFixed(2) + '%';
+			} catch {
+				// 如果不是JSON，直接转为数字
+				const num = parseFloat(confidence);
+				return !isNaN(num) ? (num * 100).toFixed(2) + '%' : '0%';
+			}
+		}
+		
+		// 如果是数组
+		if (Array.isArray(confidence)) {
+			if (confidence.length > 0) {
+				const avg = confidence.reduce((a: number, b: number) => a + b, 0) / confidence.length;
+				return (avg * 100).toFixed(2) + '%';
+			}
+			return '0%';
+		}
+		
+		// 如果是数字
+		if (typeof confidence === 'number') {
+			return (confidence * 100).toFixed(2) + '%';
+		}
+		
+		return '0%';
+	} catch (error) {
+		console.error('格式化置信度失败:', error, confidence);
+		return '0%';
+	}
+};
+
+// 2.3替换原有的 getImageUrl 函数
+const getImageUrl = (path: string): string => {
+  if (!path || path.trim() === '') {
+    return '/src/assets/images/placeholder.jpg';
+  }
+  
+  console.log('原始路径:', path);
+  
+  // 统一斜杠
+  const normalized = path.replace(/\\/g, '/');
+  
+  // 情况1：已经是HTTP URL
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) {
+    return normalized;
+  }
+  
+  // 情况2：包含Windows绝对路径
+  if (normalized.includes('D:/') || normalized.includes('d:/')) {
+    // 提取uploads/results之后的部分
+    const uploadsIndex = normalized.indexOf('/uploads/');
+    const resultsIndex = normalized.indexOf('/results/');
+    const runsIndex = normalized.indexOf('/runs/');
+    
+    if (uploadsIndex !== -1) {
+      return normalized.substring(uploadsIndex);
+    }
+    if (resultsIndex !== -1) {
+      return normalized.substring(resultsIndex);
+    }
+    if (runsIndex !== -1) {
+      return normalized.substring(runsIndex);
+    }
+    
+    // 尝试提取项目名之后的部分
+    const projectIndex = normalized.indexOf('yolo_cropDisease_detection_flask/');
+    if (projectIndex !== -1) {
+      const relative = normalized.substring(projectIndex + 'yolo_cropDisease_detection_flask/'.length);
+      return `/${relative}`;
+    }
+    
+    // 最简方案：只保留文件名
+    const filename = normalized.split('/').pop() || '';
+    return `/uploads/images/${filename}`;
+  }
+  
+  // 情况3：以/uploads等开头的相对路径
+  if (normalized.startsWith('/uploads/') || 
+      normalized.startsWith('/results/') || 
+      normalized.startsWith('/runs/')) {
+    return normalized;
+  }
+  
+  // 情况4：普通的相对路径
+  if (normalized.startsWith('/')) {
+    return normalized;
+  }
+  
+  // 情况5：只有文件名
+  return `/uploads/images/${normalized}`;
+};
+
+// 辅助函数：获取图片错误信息
+const getImageError = (path: string): string => {
+	if (path.startsWith('file://')) {
+		return 'file://协议被阻止';
+	}
+	if (/^[A-Za-z]:\\/.test(path)) {
+		return 'Windows路径需转换';
+	}
+	return '路径无效';
+};
+
+// 工具函数：格式化时间（秒）
+const formatTime = (seconds: any): string => {
+	if (!seconds && seconds !== 0) return '0秒';
+	
+	const num = parseFloat(seconds);
+	if (isNaN(num)) return '0秒';
+	
+	if (num < 1) {
+		return (num * 1000).toFixed(0) + '毫秒';
+	} else if (num < 60) {
+		return num.toFixed(3) + '秒';
+	} else {
+		const mins = Math.floor(num / 60);
+		const secs = (num % 60).toFixed(3);
+		return `${mins}分${secs}秒`;
+	}
+};
+
+// 工具函数：格式化日期时间（增强版）
+const formatDateTime = (dateTime: string | Date): string => {
+	if (!dateTime) return '未知时间';
+	
+	try {
+		let date: Date;
+		
+		// 处理各种可能的格式
+		if (typeof dateTime === 'string') {
+			// 1. 处理常见格式错误：2026-19-DD 10:02:ss
+			let normalized = dateTime;
+			
+			// 修复月份 > 12 的问题
+			const monthFix = normalized.match(/(\d{4})-(\d{2})-(\w{2})/);
+			if (monthFix) {
+				const year = monthFix[1];
+				let month = parseInt(monthFix[2]);
+				const day = monthFix[3];
+				
+				if (month > 12) {
+					month = 12;
+				}
+				normalized = `${year}-${month.toString().padStart(2, '0')}-${day}`;
+			}
+			
+			// 2. 尝试解析日期
+			date = new Date(normalized);
+			
+			// 3. 如果解析失败，尝试其他格式
+			if (isNaN(date.getTime())) {
+				// 移除所有非数字字符，只保留数字
+				const numbers = normalized.match(/\d+/g);
+				if (numbers && numbers.length >= 5) {
+					// 假设格式：年-月-日 时:分:秒
+					const [year, month, day, hour, minute, second] = numbers.map(n => parseInt(n));
+					date = new Date(year, month - 1, day, hour || 0, minute || 0, second || 0);
+				} else {
+					// 返回原始字符串（清理后）
+					return normalized.replace(/(\d{4})-(\d{2})-(\w{2})/, '$1-$2-01').substring(0, 19);
+				}
+			}
+		} else {
+			date = dateTime;
+		}
+		
+		// 如果仍然无效，返回原始值
+		if (isNaN(date.getTime())) {
+			return typeof dateTime === 'string' ? dateTime.substring(0, 19) : '无效时间';
+		}
+		
+		// 格式化为统一格式
+		const year = date.getFullYear();
+		const month = String(date.getMonth() + 1).padStart(2, '0');
+		const day = String(date.getDate()).padStart(2, '0');
+		const hours = String(date.getHours()).padStart(2, '0');
+		const minutes = String(date.getMinutes()).padStart(2, '0');
+		const seconds = String(date.getSeconds()).padStart(2, '0');
+		
+		return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+	} catch (error) {
+		console.error('格式化日期失败:', error, dateTime);
+		return typeof dateTime === 'string' ? dateTime : '时间格式错误';
+	}
+};
+
+// ====================== 数据获取和处理 ======================
 
 // 获取表格数据
 const getTableData = () => {
@@ -135,12 +438,12 @@ const getTableData = () => {
 		params.username = userInfos.value.userName;
 	}
 	
-	console.log('查询参数:', params);
+	console.log('查询图片记录参数:', params);
 	
 	// 请求Flask服务的图片记录接口
 	request.get('/flask/img_records', { params })
 		.then((res) => {
-			console.log('获取记录响应:', res);
+			console.log('获取图片记录响应:', res);
 			
 			if (res.status === 200 || res.code === 200) {
 				const data = res.data || res;
@@ -154,76 +457,100 @@ const getTableData = () => {
 						// 解析detections字段
 						let detections = [];
 						try {
-							if (record.detections) {
+							if (record.detections && record.detections !== '') {
 								detections = typeof record.detections === 'string' 
 									? JSON.parse(record.detections) 
 									: record.detections;
 							}
 						} catch (error) {
-							console.error('解析detections失败:', error);
+							console.warn('解析detections失败:', error, record.detections);
 						}
 						
 						// 解析label字段
 						let labels = [];
 						try {
-							if (record.label) {
+							if (record.label && record.label !== '') {
 								labels = typeof record.label === 'string'
 									? JSON.parse(record.label)
 									: record.label;
+								
+								// 确保labels是数组
+								if (!Array.isArray(labels)) {
+									labels = [labels];
+								}
 							}
 						} catch (error) {
-							console.error('解析label失败:', error);
+							console.warn('解析label失败:', error, record.label);
 							labels = record.label ? [record.label] : [];
 						}
 						
 						// 解析confidence字段
 						let confidences = [];
 						try {
-							if (record.confidence) {
+							if (record.confidence && record.confidence !== '') {
 								confidences = typeof record.confidence === 'string'
 									? JSON.parse(record.confidence)
-									: [record.confidence];
+									: record.confidence;
+								
+								// 确保confidences是数组
+								if (!Array.isArray(confidences)) {
+									confidences = [confidences];
+								}
 							}
 						} catch (error) {
-							console.error('解析confidence失败:', error);
-							confidences = record.confidence ? [record.confidence] : [];
+							console.warn('解析confidence失败:', error, record.confidence);
+							confidences = record.confidence ? [parseFloat(record.confidence) || 0] : [];
 						}
 						
 						// 构建family数据
 						const family = labels.map((label: string, idx: number) => ({
-							label: label,
+							label: label || '未识别',
 							confidence: confidences[idx] || 0,
-							startTime: record.start_time || record.startTime
+							detectionTime: formatDateTime(record.start_time || record.startTime)
 						}));
 						
-						// 构建表格行数据
+						// 计算平均置信度（用于表格显示）
+						let avgConfidence = 0;
+						if (confidences.length > 0) {
+							avgConfidence = confidences.reduce((a: number, b: number) => a + b, 0) / confidences.length;
+						}
+						
+						// 构建表格行数据（提前格式化时间）
 						const transformedData = {
 							id: record.id,
 							num: (state.tableData.param.pageNum - 1) * state.tableData.param.pageSize + index + 1,
-							input_img: record.input_img || record.inputImg,
-							out_img: record.out_img || record.outImg,
-							confidence: record.confidence || 0,
-							all_time: record.all_time || record.allTime,
+							input_img: record.input_img || record.inputImg || '',
+							out_img: record.out_img || record.outImg || '',
+							confidence: avgConfidence,
+							all_time: record.all_time || record.allTime || 0,
 							conf: record.conf || 0.5,
-							start_time: record.start_time || record.startTime,
-							username: record.username,
-							label: record.label || '',
+							start_time: formatDateTime(record.start_time || record.startTime || ''), // 提前格式化
+							username: record.username || '未知用户',
+							label: Array.isArray(labels) ? labels.join(', ') : labels,
 							family: family,
 							detections: detections
 						};
+						
+						// 调试：检查图片路径
+						if (transformedData.input_img) {
+							console.log(`记录 ${transformedData.id} 原始图片路径: ${transformedData.input_img}`);
+							console.log(`记录 ${transformedData.id} 转换后URL: ${getImageUrl(transformedData.input_img)}`);
+						}
 						
 						state.tableData.data.push(transformedData);
 					});
 				}
 				
-				ElMessage.success(`获取到 ${state.tableData.data.length} 条记录`);
+				if (state.tableData.data.length > 0) {
+					ElMessage.success(`获取到 ${state.tableData.data.length} 条记录`);
+				}
 			} else {
 				ElMessage.error(data.message || '获取记录失败');
 			}
 		})
 		.catch((error) => {
-			console.error('获取记录失败:', error);
-			ElMessage.error('获取记录失败，请检查Flask服务');
+			console.error('获取图片记录失败:', error);
+			ElMessage.error('获取图片记录失败，请检查Flask服务');
 		})
 		.finally(() => {
 			state.tableData.loading = false;
@@ -238,11 +565,11 @@ const onRowDel = (row: any) => {
 		type: 'warning',
 	})
 		.then(() => {
-			console.log('删除记录:', row);
+			console.log('删除图片记录:', row);
 			
 			request.delete(`/flask/img_records/${row.id}`)
 				.then((res) => {
-					console.log('删除响应:', res);
+					console.log('删除图片记录响应:', res);
 					
 					if (res.code === 200 || res.status === 200) {
 						ElMessage.success('删除成功！');
@@ -256,7 +583,7 @@ const onRowDel = (row: any) => {
 					}
 				})
 				.catch((error) => {
-					console.error('删除失败:', error);
+					console.error('删除图片记录失败:', error);
 					ElMessage.error('删除失败，请检查Flask服务');
 				});
 		})
@@ -352,7 +679,7 @@ onMounted(() => {
 		}
 	}
 	
-	:deep(img) {
+	:deep(.el-image) {
 		border-radius: 4px;
 		transition: transform 0.3s ease;
 		
@@ -360,6 +687,70 @@ onMounted(() => {
 			transform: scale(1.05);
 			cursor: pointer;
 		}
+	}
+	
+	.image-placeholder {
+		width: 120px;
+		height: 80px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: #f5f5f5;
+		border-radius: 4px;
+		color: #999;
+		
+		.el-icon {
+			font-size: 24px;
+			margin-bottom: 5px;
+			animation: rotate 2s linear infinite;
+		}
+		
+		div {
+			font-size: 12px;
+		}
+	}
+	
+	.image-error {
+		width: 120px;
+		height: 80px;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		background: #fef0f0;
+		border-radius: 4px;
+		color: #f56c6c;
+		padding: 5px;
+		
+		.el-icon {
+			font-size: 24px;
+			margin-bottom: 5px;
+		}
+		
+		div {
+			font-size: 12px;
+			margin-bottom: 2px;
+		}
+		
+		small {
+			font-size: 10px;
+			color: #999;
+			text-align: center;
+			word-break: break-all;
+			max-width: 100%;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+	}
+	
+	.no-image {
+		color: #c0c4cc;
+		font-size: 12px;
+		display: inline-block;
+		padding: 10px;
+		background: #f5f5f5;
+		border-radius: 4px;
 	}
 }
 
@@ -390,5 +781,10 @@ onMounted(() => {
 			padding: 8px 0;
 		}
 	}
+}
+
+@keyframes rotate {
+	from { transform: rotate(0deg); }
+	to { transform: rotate(360deg); }
 }
 </style>
