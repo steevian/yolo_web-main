@@ -51,6 +51,13 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
           secure: false,
         },
         
+         // 2.3新增：直接代理/stopCamera
+        '/stopCamera': {
+         target: FLASK_BASE_URL,
+         changeOrigin: true,
+         secure: false,
+        },
+
         '/upload': {
           target: FLASK_BASE_URL,
           changeOrigin: true,

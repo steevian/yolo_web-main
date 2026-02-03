@@ -334,6 +334,7 @@ const handleStopCamera = async (): Promise<void> => {
 /**
  * 关闭摄像头检测核心逻辑
  */
+
 const stopCamera = async (): Promise<void> => {
   isStopping.value = true;
   
@@ -351,30 +352,51 @@ const stopCamera = async (): Promise<void> => {
       }
     );
     
-    // 2. 发送停止请求到后端
-    try {
-      const response = await request.get('/flask/stopCamera', {
-        timeout: 5000 // 设置5秒超时
-      });
-      
-      if (response.code === 0 || response.status === 200) {
-        ElMessage.success('摄像头检测已停止');
-        cameraStatusMessage.value = '摄像头检测已停止';
-        cameraStatusType.value = 'info';
-      } else {
-        throw new Error('后端返回非成功状态');
+    // 2. 先本地停止流显示
+    resetCameraState();
+    
+    // 3. 发送停止请求到后端（尝试多个路径）
+    let stopSuccess = false;
+    const stopPaths = ['/flask/stopCamera', '/stopCamera'];
+    
+    for (const path of stopPaths) {
+      try {
+        console.log(`尝试停止摄像头路径: ${path}`);
+        const response = await request.get(path, {
+          timeout: 3000
+        });
+        
+        if (response.code === 0 || response.status === 200) {
+          stopSuccess = true;
+          console.log(`摄像头停止成功: ${path}`);
+          break;
+        }
+      } catch (requestError: any) {
+        console.warn(`路径 ${path} 停止失败:`, requestError);
+        // 继续尝试下一个路径
       }
-    } catch (requestError: any) {
-      console.warn('停止请求失败:', requestError);
-      ElMessage.warning('停止请求发送失败，但已本地停止检测');
-      cameraStatusMessage.value = '摄像头检测已本地停止（后端连接异常）';
+    }
+    
+    // 4. 反馈结果
+    if (stopSuccess) {
+      ElMessage.success('摄像头检测已停止');
+      cameraStatusMessage.value = '摄像头检测已停止，资源已释放';
+      cameraStatusType.value = 'success';
+    } else {
+      ElMessage.warning('后端停止请求失败，已本地停止摄像头显示');
+      cameraStatusMessage.value = '摄像头显示已停止（后端连接异常，请检查服务状态）';
       cameraStatusType.value = 'warning';
     }
     
-    // 3. 延迟重置状态，确保资源释放完成
+    // 5. 延迟清理
     setTimeout(() => {
+      // 确保状态完全重置
       resetCameraState();
-    }, 1000);
+      // 清理内存
+      if (typeof window.gc === 'function') {
+        window.gc();
+      }
+    }, 500);
     
   } catch (error: any) {
     // 用户取消操作
@@ -387,6 +409,8 @@ const stopCamera = async (): Promise<void> => {
     // 其他错误
     console.error('停止摄像头检测异常:', error);
     ElMessage.error('停止摄像头检测失败');
+    
+    // 强制重置状态
     resetCameraState();
   }
 };

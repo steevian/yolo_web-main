@@ -385,6 +385,12 @@ class VideoProcessingApp:
         # 根据模型实际类别设置
         self.weed_classes = ["杂草"] if not hasattr(self.weed_model, 'names') else list(self.weed_model.names.values())
         
+        # 摄像头相关实例变量
+        self.camera_cap = None
+        self.camera_writer = None
+        self.recording = False
+        self.camera_lock = False  # 摄像头锁，防止重复打开
+        
         self.setup_routes()
         self.data = {}
         # 所有路径锚定到Flask项目根目录，解决保存到外层目录问题
@@ -397,7 +403,6 @@ class VideoProcessingApp:
             'results': os.path.join(self.BASE_DIR, 'results'),
             'temp_result': os.path.join(self.BASE_DIR, 'runs/result.jpg')  # 临时检测结果图
         }
-        self.recording = False
         # 新增：视频处理进度缓存，用于Socket实时推送
         self.video_process_progress = 0
         # 新增：当前处理的视频线程
@@ -461,7 +466,10 @@ class VideoProcessingApp:
         # 视频检测相关
         self.app.add_url_rule('/predictVideo', 'predictVideo', self.predictVideo)
         self.app.add_url_rule('/predictCamera', 'predictCamera', self.predictCamera)
+        
+        # 🔥 关键修复：同时添加两个stopCamera路由
         self.app.add_url_rule('/stopCamera', 'stopCamera', self.stopCamera, methods=['GET'])
+        self.app.add_url_rule('/flask/stopCamera', 'stopCamera_flask', self.stopCamera, methods=['GET'])
         
         # 测试接口
         self.app.add_url_rule('/test_detection', 'test_detection', self.test_detection, methods=['POST'])
@@ -1224,93 +1232,187 @@ class VideoProcessingApp:
         return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
     def predictCamera(self):
-        """摄像头实时杂草检测接口"""
-        self.data.clear()
-        self.data.update({
-            "username": request.args.get('username', ''),
-            "conf": float(request.args.get('conf', 0.5)),
-            "startTime": request.args.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        })
-        self.recording = True
-
-        self.socketio.emit('message', {'data': '正在加载杂草检测模型，请稍等！'})
-
-        # 初始化电脑摄像头
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-        if not cap.isOpened():
-            return Response("无法打开摄像头，请检查设备！", status=400)
+        """摄像头实时杂草检测接口（优化版）"""
+        print("📹 开始摄像头检测...")
         
-        # 初始化视频写入器（项目内路径）
-        os.makedirs(os.path.dirname(self.paths['camera_output']), exist_ok=True)
-        video_writer = cv2.VideoWriter(
-            self.paths['camera_output'],
-            cv2.VideoWriter_fourcc(*'XVID'),
-            20,
-            (640, 480)
-        )
+        # 检查摄像头是否已被占用
+        if self.camera_lock:
+            print("⚠️ 摄像头正在被其他进程占用")
+            self.socketio.emit('message', {'data': '摄像头正在被其他进程占用，请稍后再试'})
+            return Response("摄像头正在被其他进程占用", status=409)  # 409 Conflict
+        
+        try:
+            self.camera_lock = True
+            
+            self.data.clear()
+            self.data.update({
+                "username": request.args.get('username', ''),
+                "conf": float(request.args.get('conf', 0.5)),
+                "startTime": request.args.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            })
+            self.recording = True
 
-        def generate():
-            try:
-                while self.recording and cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
-                    
-                    # 实时杂草检测（强制CPU）
-                    results = self.weed_model.predict(
-                        source=frame,
-                        imgsz=640,
-                        conf=self.data['conf'],
-                        show=False,
-                        half=False,
-                        device='cpu',
+            # 初始化电脑摄像头
+            print("🔧 初始化摄像头...")
+            self.camera_cap = cv2.VideoCapture(0)
+            if not self.camera_cap.isOpened():
+                print("❌ 无法打开摄像头")
+                self.camera_lock = False
+                return Response("无法打开摄像头，请检查设备！", status=400)
+            
+            # 设置摄像头参数
+            self.camera_cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            self.camera_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            self.camera_cap.set(cv2.CAP_PROP_FPS, 20)
+            
+            print(f"✅ 摄像头已打开，分辨率: 640x480, FPS: 20")
+            self.socketio.emit('message', {'data': '摄像头已打开，开始实时杂草检测...'})
+            
+            # 初始化视频写入器（项目内路径）
+            os.makedirs(os.path.dirname(self.paths['camera_output']), exist_ok=True)
+            self.camera_writer = cv2.VideoWriter(
+                self.paths['camera_output'],
+                cv2.VideoWriter_fourcc(*'XVID'),
+                20,
+                (640, 480)
+            )
+
+            def generate():
+                frame_count = 0
+                try:
+                    while self.recording and self.camera_cap.isOpened():
+                        ret, frame = self.camera_cap.read()
+                        if not ret:
+                            print("❌ 摄像头读取帧失败")
+                            break
                         
-                    )
-                    
-                    # 绘制检测框和标签
-                    processed_frame = results[0].plot()
-                    if self.recording:
-                        video_writer.write(processed_frame)
-                    
-                    # 编码为jpg，生成实时流返回前端
-                    _, jpeg = cv2.imencode('.jpg', processed_frame)
-                    yield b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
-                    
-            finally:
-                # 释放资源
-                self.cleanup_resources(cap, video_writer)
-                self.socketio.emit('message', {'data': '摄像头杂草检测完成，正在保存视频！'})
-                
-                # 转换视频格式
-                if os.path.exists(self.paths['camera_output']):
-                    for progress in self.convert_avi_to_mp4(self.paths['camera_output']):
-                        self.socketio.emit('progress', {'data': progress})
-                
-                # 保存检测后的视频到项目内results目录
-                result_video_name = f"camera_{int(datetime.now().timestamp())}.mp4"
-                result_video_dir = os.path.join(self.paths['results'], 'videos')
-                result_video_path = os.path.join(result_video_dir, result_video_name)
-                os.makedirs(result_video_dir, exist_ok=True)
-                if os.path.exists(self.paths['output']):
-                    shutil.copy(self.paths['output'], result_video_path)
-                    # 构建访问URL
-                    out_video_url = f"/results/videos/{result_video_name}"
-                    self.data["outVideo"] = out_video_url
-                    
-                    # 保存检测记录到数据库
-                    self.db_manager.add_camera_record(self.data)
-                
-                # 清理临时文件
-                self.cleanup_files([self.paths['download'], self.paths['output'], self.paths['camera_output']])
+                        frame_count += 1
+                        
+                        # 实时杂草检测（强制CPU）
+                        results = self.weed_model.predict(
+                            source=frame,
+                            imgsz=640,
+                            conf=self.data['conf'],
+                            show=False,
+                            half=False,
+                            device='cpu',
+                        )
+                        
+                        # 绘制检测框和标签
+                        processed_frame = results[0].plot()
+                        if self.recording:
+                            self.camera_writer.write(processed_frame)
+                        
+                        # 编码为jpg，生成实时流返回前端
+                        _, jpeg = cv2.imencode('.jpg', processed_frame)
+                        yield b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n'
+                        
+                        # 每30帧输出一次状态
+                        if frame_count % 30 == 0:
+                            print(f"📊 已处理 {frame_count} 帧")
+                            
+                except Exception as e:
+                    print(f"❌ 摄像头检测异常: {e}")
+                    self.socketio.emit('message', {'data': f'摄像头检测异常: {str(e)}'})
+                finally:
+                    print("🛑 摄像头检测流结束，清理资源...")
+                    self.cleanup_camera_resources()
 
-        return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+            return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+            
+        except Exception as e:
+            print(f"❌ 摄像头检测初始化失败: {e}")
+            self.camera_lock = False
+            return Response(f"摄像头检测初始化失败: {str(e)}", status=500)
 
     def stopCamera(self):
-        """停止摄像头杂草检测"""
-        self.recording = False
-        return jsonify({"status": 200, "message": "摄像头杂草检测已停止", "code": 0})
+        """停止摄像头杂草检测（优化版）"""
+        print("🛑 收到停止摄像头检测请求")
+        
+        try:
+            # 1. 停止录制标志
+            self.recording = False
+            
+            # 2. 强制释放摄像头资源
+            success = self.cleanup_camera_resources()
+            
+            if success:
+                print("✅ 摄像头检测已停止，资源已释放")
+                response = {
+                    "status": 200,
+                    "message": "摄像头杂草检测已停止，资源已释放",
+                    "code": 0
+                }
+            else:
+                print("⚠️ 摄像头资源释放部分失败")
+                response = {
+                    "status": 200,
+                    "message": "摄像头检测已停止，部分资源释放失败",
+                    "code": 0
+                }
+            
+            # 3. 发送WebSocket通知
+            self.socketio.emit('message', {'data': '摄像头检测已停止'})
+            
+            return jsonify(response)
+            
+        except Exception as e:
+            print(f"❌ 停止摄像头检测异常: {e}")
+            return jsonify({
+                "status": 500,
+                "message": f"停止摄像头检测失败: {str(e)}",
+                "code": 1
+            })
+
+    def cleanup_camera_resources(self):
+        """清理摄像头资源"""
+        success = True
+        try:
+            print("🧹 清理摄像头资源...")
+            
+            # 释放摄像头
+            if self.camera_cap is not None and self.camera_cap.isOpened():
+                self.camera_cap.release()
+                self.camera_cap = None
+                print("✅ 摄像头已释放")
+            elif self.camera_cap is not None:
+                self.camera_cap = None
+                print("ℹ️  摄像头引用已清理")
+            
+            # 释放视频写入器
+            if self.camera_writer is not None:
+                self.camera_writer.release()
+                self.camera_writer = None
+                print("✅ 视频写入器已释放")
+            
+            # 清理OpenCV窗口
+            cv2.destroyAllWindows()
+            
+            # 清理临时文件
+            temp_files = [
+                self.paths.get('download', ''),
+                self.paths.get('output', ''),
+                self.paths.get('camera_output', '')
+            ]
+            
+            for temp_file in temp_files:
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                        print(f"🗑️  已清理临时文件: {temp_file}")
+                    except Exception as e:
+                        print(f"⚠️  清理临时文件失败 {temp_file}: {e}")
+            
+            # 释放摄像头锁
+            self.camera_lock = False
+            print("🔓 摄像头锁已释放")
+            
+        except Exception as e:
+            print(f"❌ 清理摄像头资源失败: {e}")
+            success = False
+            self.camera_lock = False  # 无论如何都要释放锁
+            
+        return success
 
     def get_img_records(self):
         """获取图片检测记录"""
