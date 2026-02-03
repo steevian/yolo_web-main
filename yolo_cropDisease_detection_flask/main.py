@@ -192,26 +192,41 @@ class DatabaseManager:
         return affected > 0
     
     def add_video_record(self, data):
-        """添加视频检测记录"""
+        """添加视频检测记录 - 确保存储相对路径"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-        
+    
+        # 转换路径为相对路径
+        input_video = data.get('inputVideo', '')
+        out_video = data.get('outVideo', '')
+    
+        # 如果是绝对路径，转换为相对于项目根目录的相对路径
+        if input_video.startswith(self.BASE_DIR):
+            input_video = os.path.relpath(input_video, self.BASE_DIR).replace('\\', '/')
+            if not input_video.startswith('/'):
+                input_video = '/' + input_video
+    
+        if out_video.startswith(self.BASE_DIR):
+            out_video = os.path.relpath(out_video, self.BASE_DIR).replace('\\', '/')
+            if not out_video.startswith('/'):
+                out_video = '/' + out_video
+    
         cursor.execute('''
             INSERT INTO video_records 
             (username, input_video, out_video, conf, start_time)
             VALUES (?, ?, ?, ?, ?)
         ''', (
             data.get('username', ''),
-            data.get('inputVideo', ''),
-            data.get('outVideo', ''),
+            input_video,  # 存储相对路径
+            out_video,    # 存储相对路径
             data.get('conf', 0.5),
             data.get('startTime', '')
         ))
-        
+    
         conn.commit()
         record_id = cursor.lastrowid
         conn.close()
-        
+    
         print(f"✅ 视频记录保存成功，ID: {record_id}")
         return record_id
     
@@ -888,12 +903,12 @@ class VideoProcessingApp:
         })
 
     def predictImg(self):
-        """图片杂草检测核心接口（兼容/predict和/predictImg，新增Windows路径兼容修复）"""
+        """图片杂草检测核心接口"""
         try:
             # 接收参数：兼容JSON和表单提交
             data = request.get_json() if request.is_json else request.form.to_dict()
             print(f"📸 接收图片杂草检测参数: {data}")
-            
+        
             # 校验必要参数
             if 'inputImg' not in data or not data['inputImg']:
                 return jsonify({
@@ -906,39 +921,35 @@ class VideoProcessingApp:
                     "detections": [],
                     "detection_count": 0
                 })
-            
-            # 初始化参数
+        
+            # 初始化参数 - 使用服务器当前时间，不要从前端获取
             self.data.clear()
             self.data.update({
                 "username": data.get('username', ''),
                 "conf": float(data.get('conf', 0.5)),
-                "startTime": data.get('startTime', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
                 "inputImg": data['inputImg']
             })
-            
+        
             print(f"🔍 执行杂草检测，置信度: {self.data['conf']}, 原始图片路径: {self.data['inputImg']}")
-            
+        
             # ==============================================
-            # 核心修复：兼容前端传入的D:\uploads\...绝对路径，自动修正为后端实际路径
+            # 路径处理（保持不变）
             # ==============================================
             img_path = self.data["inputImg"]
-            # 1. 处理Windows绝对路径（剥离D:\盘符，转换为项目实际路径）
+            # 1. 处理Windows绝对路径
             if img_path.startswith(('D:\\', 'd:\\')):
                 img_path = img_path.split('D:\\', 1)[-1].replace('\\', '/')
                 img_path = os.path.join(self.BASE_DIR, img_path)
                 print(f"📌 修正Windows绝对路径为: {img_path}")
-            # 2. 处理/开头的相对路径，转为项目根目录绝对路径
+            # 2. 处理/开头的相对路径
             elif img_path.startswith('/'):
                 img_path = os.path.join(self.BASE_DIR, img_path.lstrip('/'))
                 print(f"📌 修正/开头相对路径为: {img_path}")
-            # 3. 统一替换斜杠，避免跨系统路径错误
+            # 3. 统一替换斜杠
             img_path = img_path.replace('\\', '/')
             self.data["inputImg"] = img_path
-            # ==============================================
-            # 路径兼容修复结束
-            # ==============================================
-            
-            # 处理网络图片URL：下载到本地uploads/images
+        
+            # 处理网络图片URL
             if img_path.startswith(('http://', 'https://')):
                 local_path = self.download_file(img_path, os.path.join(self.paths['uploads'], 'images/'))
                 if not local_path:
@@ -953,8 +964,8 @@ class VideoProcessingApp:
                         "detection_count": 0
                     })
                 img_path = local_path
-                self.data["inputImg"] = img_path  # 更新为本地路径
-            
+                self.data["inputImg"] = img_path
+        
             # 转换为绝对路径，最终校验文件是否存在
             img_abs_path = os.path.abspath(img_path)
             if not os.path.exists(img_abs_path):
@@ -968,9 +979,92 @@ class VideoProcessingApp:
                     "detections": [],
                     "detection_count": 0
                 })
+        
+            # ==============================================
+            # 关键修复：统一使用服务器时间对象，而不是字符串
+            # ==============================================
+            # 记录检测开始时间（datetime对象）
+            start_datetime = datetime.now()
+        
+            # 执行检测
+            detections = self.direct_detection(img_abs_path)
+            detection_count = len(detections)
+        
+            # 计算检测耗时（datetime对象相减）
+            end_datetime = datetime.now()
+            all_time = (end_datetime - start_datetime).total_seconds()
+        
+            # 处理检测结果
+            labels = [d['weed_name'] for d in detections] if detections else []
+            confidences = [d['confidence'] for d in detections] if detections else []
+            confidence_val = confidences[0] if confidences else 0.0
+            label_str = ",".join(labels) if labels else "未检测到杂草"
+        
+            # 保存检测结果图片
+            result_img_name = f"result_{int(datetime.now().timestamp())}.jpg"
+            result_img_dir = os.path.join(self.paths['results'], 'images')
+            result_img_path = os.path.join(result_img_dir, result_img_name)
+            os.makedirs(result_img_dir, exist_ok=True)
+            if os.path.exists(self.paths['temp_result']):
+                shutil.copy(self.paths['temp_result'], result_img_path)
+                print(f"📸 结果图片已保存到: {result_img_path}")
+        
+            # 构建前端可访问的结果图URL
+            out_img_url = f"/results/images/{result_img_name}"
+        
+            # ==============================================
+            # 关键修复：保存检测记录时使用格式化的时间字符串
+            # ==============================================
+            # 格式化时间为标准字符串
+            formatted_start_time = start_datetime.strftime("%Y-%m-%d %H:%M:%S")
+        
+            # 保存检测记录到数据库
+            if detection_count > 0 or label_str != "未检测到杂草":
+                record_data = {
+                    "username": self.data["username"],
+                    "inputImg": self.data["inputImg"],
+                    "outImg": out_img_url,
+                    "label": labels,
+                    "confidence": confidences,
+                    "allTime": all_time,
+                    "conf": self.data["conf"],
+                    "startTime": formatted_start_time,  # 使用格式化的时间字符串
+                    "detections": detections
+                }
+                self.db_manager.add_img_record(record_data)
+        
+            # 构造成功响应
+            response_data = {
+                "status": 200,
+                "message": f"杂草检测成功，共检测到 {detection_count} 个目标" if detection_count else "未检测到杂草",
+                "outImg": out_img_url,
+                "allTime": round(all_time, 4),
+                "confidence": round(confidence_val, 4),
+                "label": label_str,
+                "confidences": [round(c,4) for c in confidences],
+                "labels": labels,
+                "detections": detections,
+                "detection_count": detection_count
+            }
+        
+            return jsonify(response_data)
+        
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return jsonify({
+                "status": 500,
+                "message": f"杂草检测出错: {str(e)}",
+                "label": "",
+                "confidence": 0.0,
+                "allTime": 0.0,
+                "outImg": "",
+                "detections": [],
+                "detection_count": 0
+            })
             
             # 记录检测开始时间
-            start_time = datetime.now()
+            start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             # 优先使用直接检测（稳定，避免ImagePredictor兼容问题）
             detections = self.direct_detection(img_abs_path)
@@ -1007,7 +1101,7 @@ class VideoProcessingApp:
                     "confidence": confidences,
                     "allTime": all_time,
                     "conf": self.data["conf"],
-                    "startTime": self.data["startTime"],
+                    "startTime": start_time,  # 使用服务器时间
                     "detections": detections
                 }
                 self.db_manager.add_img_record(record_data)

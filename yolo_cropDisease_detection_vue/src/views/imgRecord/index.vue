@@ -349,68 +349,43 @@ const formatTime = (seconds: any): string => {
 };
 
 // 工具函数：格式化日期时间（增强版）
+// 替换原有的复杂逻辑
 const formatDateTime = (dateTime: string | Date): string => {
-	if (!dateTime) return '未知时间';
-	
-	try {
-		let date: Date;
-		
-		// 处理各种可能的格式
-		if (typeof dateTime === 'string') {
-			// 1. 处理常见格式错误：2026-19-DD 10:02:ss
-			let normalized = dateTime;
-			
-			// 修复月份 > 12 的问题
-			const monthFix = normalized.match(/(\d{4})-(\d{2})-(\w{2})/);
-			if (monthFix) {
-				const year = monthFix[1];
-				let month = parseInt(monthFix[2]);
-				const day = monthFix[3];
-				
-				if (month > 12) {
-					month = 12;
-				}
-				normalized = `${year}-${month.toString().padStart(2, '0')}-${day}`;
-			}
-			
-			// 2. 尝试解析日期
-			date = new Date(normalized);
-			
-			// 3. 如果解析失败，尝试其他格式
-			if (isNaN(date.getTime())) {
-				// 移除所有非数字字符，只保留数字
-				const numbers = normalized.match(/\d+/g);
-				if (numbers && numbers.length >= 5) {
-					// 假设格式：年-月-日 时:分:秒
-					const [year, month, day, hour, minute, second] = numbers.map(n => parseInt(n));
-					date = new Date(year, month - 1, day, hour || 0, minute || 0, second || 0);
-				} else {
-					// 返回原始字符串（清理后）
-					return normalized.replace(/(\d{4})-(\d{2})-(\w{2})/, '$1-$2-01').substring(0, 19);
-				}
-			}
-		} else {
-			date = dateTime;
-		}
-		
-		// 如果仍然无效，返回原始值
-		if (isNaN(date.getTime())) {
-			return typeof dateTime === 'string' ? dateTime.substring(0, 19) : '无效时间';
-		}
-		
-		// 格式化为统一格式
-		const year = date.getFullYear();
-		const month = String(date.getMonth() + 1).padStart(2, '0');
-		const day = String(date.getDate()).padStart(2, '0');
-		const hours = String(date.getHours()).padStart(2, '0');
-		const minutes = String(date.getMinutes()).padStart(2, '0');
-		const seconds = String(date.getSeconds()).padStart(2, '0');
-		
-		return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
-	} catch (error) {
-		console.error('格式化日期失败:', error, dateTime);
-		return typeof dateTime === 'string' ? dateTime : '时间格式错误';
-	}
+  if (!dateTime) return '未知时间';
+  
+  try {
+    let date: Date;
+    
+    if (typeof dateTime === 'string') {
+      // 移除所有修复逻辑，直接解析
+      date = new Date(dateTime);
+      
+      // 如果解析失败，尝试常见格式
+      if (isNaN(date.getTime())) {
+        // 尝试解析ISO格式
+        date = new Date(dateTime.replace(' ', 'T') + 'Z');
+      }
+    } else {
+      date = dateTime;
+    }
+    
+    if (isNaN(date.getTime())) {
+      return typeof dateTime === 'string' ? dateTime.substring(0, 19) : '无效时间';
+    }
+    
+    // 格式化为统一格式
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  } catch (error) {
+    console.error('格式化日期失败:', error, dateTime);
+    return typeof dateTime === 'string' ? dateTime : '时间格式错误';
+  }
 };
 
 // ====================== 数据获取和处理 ======================

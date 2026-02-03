@@ -181,24 +181,51 @@ const state = reactive({
 });
 
 // 获取视频URL（处理跨域和路径问题）
-const getVideoUrl = (videoPath: string) => {
-	if (!videoPath) return '';
-	
-	// 如果已经是完整的URL，直接返回
-	if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
-		return videoPath;
-	}
-	
-	// 如果是相对路径，添加Flask服务地址
-	if (videoPath.startsWith('/')) {
-		return `http://${currentHost}:5000${videoPath}`;
-	}
-	
-	// 其他情况，添加Flask服务地址和基础路径
-	return `http://${currentHost}:5000/${videoPath}`;
+// 改进的视频URL获取函数
+const getVideoUrl = (videoPath: string): string => {
+  if (!videoPath) return '';
+  
+  console.log('原始视频路径:', videoPath);
+  
+  // 1. 如果是完整的HTTP/HTTPS URL，直接返回
+  if (videoPath.startsWith('http://') || videoPath.startsWith('https://')) {
+    return videoPath;
+  }
+  
+  // 2. 处理Windows绝对路径
+  if (videoPath.includes('D:/') || videoPath.includes('d:/') || videoPath.includes('D:\\') || videoPath.includes('d:\\')) {
+    // 提取uploads/results之后的部分
+    const normalized = videoPath.replace(/\\/g, '/');
+    
+    const uploadsIndex = normalized.indexOf('/uploads/');
+    const resultsIndex = normalized.indexOf('/results/');
+    const runsIndex = normalized.indexOf('/runs/');
+    
+    if (uploadsIndex !== -1) {
+      const relativePath = normalized.substring(uploadsIndex);
+      return `http://${currentHost}:5000${relativePath}`;
+    }
+    if (resultsIndex !== -1) {
+      const relativePath = normalized.substring(resultsIndex);
+      return `http://${currentHost}:5000${relativePath}`;
+    }
+    if (runsIndex !== -1) {
+      const relativePath = normalized.substring(runsIndex);
+      return `http://${currentHost}:5000${relativePath}`;
+    }
+    
+    // 尝试直接返回，让代理处理
+    return `http://${currentHost}:5000/${normalized}`;
+  }
+  
+  // 3. 处理相对路径
+  if (videoPath.startsWith('/')) {
+    return `http://${currentHost}:5000${videoPath}`;
+  }
+  
+  // 4. 默认添加基础路径
+  return `http://${currentHost}:5000/${videoPath}`;
 };
-
-// 获取视频封面图（使用第一帧）
 const getVideoPoster = (videoPath: string) => {
 	// 这里可以替换为实际的封面图生成逻辑
 	// 暂时返回空，浏览器会自动生成
