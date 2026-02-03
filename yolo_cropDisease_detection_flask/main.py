@@ -1421,19 +1421,62 @@ class VideoProcessingApp:
     def stopCamera(self):
         """停止摄像头杂草检测（优化版）"""
         print("🛑 收到停止摄像头检测请求")
-        
+    
         try:
             # 1. 停止录制标志
             self.recording = False
-            
+        
             # 2. 强制释放摄像头资源
             success = self.cleanup_camera_resources()
-            
+        
+            # 🔥 关键新增：保存摄像头检测记录
+            if success and os.path.exists(self.paths['camera_output']):
+                try:
+                    # 生成结果视频文件名
+                    result_video_name = f"camera_{int(datetime.now().timestamp())}.mp4"
+                    result_video_dir = os.path.join(self.paths['results'], 'videos')
+                    result_video_path = os.path.join(result_video_dir, result_video_name)
+                    os.makedirs(result_video_dir, exist_ok=True)
+                
+                    # 转换为MP4格式（如果需要）
+                    input_video = self.paths['camera_output']
+                    if input_video.endswith('.avi'):
+                        try:
+                            subprocess.run([
+                                'ffmpeg', '-i', input_video,
+                                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                                '-c:a', 'aac', '-b:a', '128k',
+                                '-y', result_video_path
+                            ], capture_output=True, timeout=30)
+                        except Exception as e:
+                            # 如果转换失败，直接复制
+                            shutil.copy(input_video, result_video_path)
+                    else:
+                        shutil.copy(input_video, result_video_path)
+                
+                    # 构建访问URL
+                    result_url = f"/results/videos/{result_video_name}"
+                
+                    # 保存记录到数据库
+                    record_data = {
+                        "username": self.data.get("username", "unknown"),
+                        "outVideo": result_url,
+                        "conf": self.data.get("conf", 0.5),
+                        "startTime": self.data.get("startTime", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    }
+                
+                    print(f"📊 准备保存摄像头记录: {record_data}")
+                    self.db_manager.add_camera_record(record_data)
+                    print(f"✅ 摄像头检测记录已保存: {result_url}")
+                
+                except Exception as e:
+                    print(f"❌ 保存摄像头检测记录失败: {e}")
+        
             if success:
                 print("✅ 摄像头检测已停止，资源已释放")
                 response = {
                     "status": 200,
-                    "message": "摄像头杂草检测已停止，资源已释放",
+                    "message": "摄像头杂草检测已停止，资源已释放，记录已保存",
                     "code": 0
                 }
             else:
@@ -1441,14 +1484,14 @@ class VideoProcessingApp:
                 response = {
                     "status": 200,
                     "message": "摄像头检测已停止，部分资源释放失败",
-                    "code": 0
+                    "code": 1
                 }
-            
+        
             # 3. 发送WebSocket通知
-            self.socketio.emit('message', {'data': '摄像头检测已停止'})
-            
+            self.socketio.emit('message', {'data': '摄像头检测已停止，记录已保存'})
+        
             return jsonify(response)
-            
+        
         except Exception as e:
             print(f"❌ 停止摄像头检测异常: {e}")
             return jsonify({
