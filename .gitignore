@@ -1,79 +1,162 @@
-# 【系统垃圾文件】
-.DS_Store
-Thumbs.db
+# ========================== 通用基础忽略 ==========================
+# 操作系统通用临时文件
+.DS_Store                # MacOS
+Thumbs.db                # Windows
+desktop.ini              # Windows
 *.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# 日志文件
 *.log
-
-# 【IDE/编辑器配置】（IDEA/Eclipse/VSCode/PyCharm）
-.idea/
-.vs/
-.vscode/
-*.iml
-*.classpath
-*.project
-.settings/
-target/
-out/
-
-# 【Java/SpringBoot】
-# maven依赖
-.m2/
-# 打包文件
-*.jar
-*.war
-# 日志
 logs/
-# 配置文件（可选，若有本地数据库密码等敏感信息）
-src/main/resources/application-dev.yml
+log/
+*.out
+*.err
 
-# 【Python/Flask/PyTorch】
+# 压缩包/归档文件
+*.zip
+*.tar
+*.tar.gz
+*.7z
+*.rar
+
+# 缓存/临时目录
+.cache/
+.tmp/
+temp/
+tmp/
+
+# ========================== Python 相关（YOLO 后端常用） ==========================
 # 虚拟环境
 venv/
 env/
+ENV/
 *.env
-# pip依赖
+.venv/
+env.local/
+env.*.local/
+
+# 字节码/编译文件
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-# 第三方库
-site-packages/
-# 深度学习权重/数据集（核心！超大文件，绝对忽略）
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# pip 缓存
+pip-wheel-metadata/
+.pip-cache/
+
+# ========================== Web 前端相关 ==========================
+# Node.js 依赖（前端项目必忽略）
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+.pnpm-debug.log
+package-lock.json       # 可选：若团队统一版本，可保留；否则忽略
+yarn.lock               # 可选：同上
+pnpm-lock.yaml          # 可选：同上
+
+# 前端构建产物
+dist/
+build/
+out/
+*.min.js
+*.min.css
+
+# 前端缓存
+.eslintcache
+.stylelintcache
+.vite/
+.next/
+.nuxt/
+
+# ========================== YOLO 项目专属忽略 ==========================
+# YOLO 模型权重文件（体积大，禁止提交）
 *.pt
 *.pth
 *.onnx
-dataset/
+*.engine
+*.bin
+*.weights
+best.pt
+last.pt
+yolov*.pt
+yolov*.onnx
+
+# 数据集/图片/视频（禁止提交，建议通过 README 说明获取方式）
 datasets/
-weights/
-weight/
-# 训练日志
+data/                   # 若 data 目录是业务配置，可改为 data/* !data/config.yaml
+images/
+videos/
+labels/
+
+# YOLO 运行产物
 runs/
-wandb/
-# 缓存
-.cache/
-
-# 【Vue/前端】
-# node依赖
-node_modules/
-# 打包文件
-dist/
-build/
-# 环境变量
-.env.*
-# 缓存
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# 【视频处理/FFmpeg】
-*.mp4
+results/
+predictions/
 *.avi
-*.mov
-*.flv
+*.mp4
 
-# 忽略检测生成的图片（匹配你的图片命名格式）
-result_*.jpg
-*.png  # 如果还有其他格式的检测图，也可以直接忽略
+# 训练日志/缓存
+*.log
+wandb/
+tensorboard/
+events.out.tfevents.*
 
-# 忽略数据库文件（如weed_detection.db）
+# ========================== IDE/编辑器忽略 ==========================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Vim
+.vim/
+*.vim
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# ========================== 其他敏感/本地配置 ==========================
+# 密钥/配置文件（保留模板，忽略实际配置）
+config.py
+secret.py
+*.key
+*.pem
+.env
+.env.local
+.env.prod
 *.db
+*.sqlite3
+
+# 本地脚本/测试文件
+test_*.py
+local_*.py
+*.sh                    # 若有通用部署脚本，可改为 !deploy.sh
+*.bat
