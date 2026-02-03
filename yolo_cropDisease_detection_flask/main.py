@@ -25,12 +25,42 @@ from user_manager import UserManager
 from flask_cors import CORS
 
 class DatabaseManager:
-    """SQLite 数据库管理器"""
-    def __init__(self, db_path='weed_detection.db'):
-        # 锚定数据库到Flask项目根目录
-        self.db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), db_path)
+    """SQLite 数据库管理器 - 修复路径问题版本"""
+    def __init__(self, db_path='weed_detection.db', base_dir=None):
+        # 如果提供了base_dir，使用它；否则使用当前文件所在目录
+        if base_dir:
+            self.BASE_DIR = base_dir
+        else:
+            self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        
+        # 数据库路径
+        self.db_path = os.path.join(self.BASE_DIR, db_path)
+        
         self.init_database()
+        print(f"✅ 数据库管理器初始化完成: {self.db_path}")
     
+    def convert_to_relative_path(self, path):
+        """将绝对路径转换为相对于BASE_DIR的相对路径"""
+        if not path:
+            return path
+        
+        try:
+            # 如果是绝对路径且包含BASE_DIR，转换为相对路径
+            if os.path.isabs(path) and path.startswith(self.BASE_DIR):
+                relative_path = os.path.relpath(path, self.BASE_DIR)
+                # 统一使用正斜杠
+                return '/' + relative_path.replace('\\', '/')
+            
+            # 如果已经是相对路径（以/开头），直接返回
+            if path.startswith('/'):
+                return path
+            
+            # 其他情况返回原值
+            return path
+        except Exception as e:
+            print(f"⚠️  路径转换失败 {path}: {e}")
+            return path
+
     def init_database(self):
         """初始化数据库表"""
         conn = sqlite3.connect(self.db_path)
@@ -83,41 +113,59 @@ class DatabaseManager:
         print(f"✅ 数据库初始化完成: {self.db_path}")
     
     def add_img_record(self, data):
-        """添加图片检测记录"""
+        """添加图片检测记录 - 修复路径版本"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        # 转换数据格式
-        label = data.get('label', '')
-        if isinstance(label, list):
-            label = json.dumps(label, ensure_ascii=False)
-        
-        confidence = data.get('confidence', 0.0)
-        if isinstance(confidence, list):
-            confidence = json.dumps(confidence, ensure_ascii=False)
-        
-        cursor.execute('''
-            INSERT INTO img_records 
-            (username, input_img, out_img, label, confidence, all_time, conf, start_time, detections)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data.get('username', ''),
-            data.get('inputImg', ''),
-            data.get('outImg', ''),
-            label,
-            confidence,
-            data.get('allTime', 0.0),
-            data.get('conf', 0.5),
-            data.get('startTime', ''),
-            json.dumps(data.get('detections', []), ensure_ascii=False) if data.get('detections') else ''
-        ))
-        
-        conn.commit()
-        record_id = cursor.lastrowid
-        conn.close()
-        
-        print(f"✅ 图片记录保存成功，ID: {record_id}")
-        return record_id
+        try:
+            # 转换路径为相对路径
+            input_img = self.convert_to_relative_path(data.get('inputImg', ''))
+            out_img = self.convert_to_relative_path(data.get('outImg', ''))
+            
+            # 转换数据格式
+            label = data.get('label', '')
+            if isinstance(label, list):
+                label = json.dumps(label, ensure_ascii=False)
+            
+            confidence = data.get('confidence', 0.0)
+            if isinstance(confidence, list):
+                confidence = json.dumps(confidence, ensure_ascii=False)
+            
+            # 调试信息
+            print(f"📊 保存图片记录:")
+            print(f"  - 原始inputImg: {data.get('inputImg', '')}")
+            print(f"  - 转换后inputImg: {input_img}")
+            print(f"  - outImg: {out_img}")
+            
+            cursor.execute('''
+                INSERT INTO img_records 
+                (username, input_img, out_img, label, confidence, all_time, conf, start_time, detections)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (
+                data.get('username', ''),
+                input_img,
+                out_img,
+                label,
+                confidence,
+                data.get('allTime', 0.0),
+                data.get('conf', 0.5),
+                data.get('startTime', ''),
+                json.dumps(data.get('detections', []), ensure_ascii=False) if data.get('detections') else ''
+            ))
+            
+            conn.commit()
+            record_id = cursor.lastrowid
+            
+            print(f"✅ 图片记录保存成功，ID: {record_id}")
+            return record_id
+            
+        except Exception as e:
+            print(f"❌ 保存图片记录失败: {e}")
+            conn.rollback()
+            raise e
+            
+        finally:
+            conn.close()
     
     def get_img_records(self, page=1, page_size=10, username=None, search_label=None):
         """获取图片检测记录（分页）"""
@@ -192,43 +240,46 @@ class DatabaseManager:
         return affected > 0
     
     def add_video_record(self, data):
-        """添加视频检测记录 - 确保存储相对路径"""
+        """添加视频检测记录 - 增强版本"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
-    
-        # 转换路径为相对路径
-        input_video = data.get('inputVideo', '')
-        out_video = data.get('outVideo', '')
-    
-        # 如果是绝对路径，转换为相对于项目根目录的相对路径
-        if input_video.startswith(self.BASE_DIR):
-            input_video = os.path.relpath(input_video, self.BASE_DIR).replace('\\', '/')
-            if not input_video.startswith('/'):
-                input_video = '/' + input_video
-    
-        if out_video.startswith(self.BASE_DIR):
-            out_video = os.path.relpath(out_video, self.BASE_DIR).replace('\\', '/')
-            if not out_video.startswith('/'):
-                out_video = '/' + out_video
-    
-        cursor.execute('''
-            INSERT INTO video_records 
-            (username, input_video, out_video, conf, start_time)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (
-            data.get('username', ''),
-            input_video,  # 存储相对路径
-            out_video,    # 存储相对路径
-            data.get('conf', 0.5),
-            data.get('startTime', '')
-        ))
-    
-        conn.commit()
-        record_id = cursor.lastrowid
-        conn.close()
-    
-        print(f"✅ 视频记录保存成功，ID: {record_id}")
-        return record_id
+        
+        try:
+            # 转换路径为相对路径
+            input_video = self.convert_to_relative_path(data.get('inputVideo', ''))
+            out_video = self.convert_to_relative_path(data.get('outVideo', ''))
+            
+            # 调试信息
+            print(f"📊 保存视频记录:")
+            print(f"  - 原始inputVideo: {data.get('inputVideo', '')}")
+            print(f"  - 转换后inputVideo: {input_video}")
+            print(f"  - outVideo: {out_video}")
+            
+            cursor.execute('''
+                INSERT INTO video_records 
+                (username, input_video, out_video, conf, start_time)
+                VALUES (?, ?, ?, ?, ?)
+            ''', (
+                data.get('username', ''),
+                input_video,
+                out_video,
+                data.get('conf', 0.5),
+                data.get('startTime', '')
+            ))
+            
+            conn.commit()
+            record_id = cursor.lastrowid
+            
+            print(f"✅ 视频记录保存成功，ID: {record_id}")
+            return record_id
+            
+        except Exception as e:
+            print(f"❌ 保存视频记录失败: {e}")
+            conn.rollback()
+            raise e
+            
+        finally:
+            conn.close()
     
     def get_video_records(self, page=1, page_size=10, username=None):
         """获取视频检测记录（分页）"""
@@ -285,27 +336,42 @@ class DatabaseManager:
         return affected > 0
     
     def add_camera_record(self, data):
-        """添加摄像头检测记录"""
+        """添加摄像头检测记录 - 修复路径版本"""
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
         
-        cursor.execute('''
-            INSERT INTO camera_records 
-            (username, out_video, conf, start_time)
-            VALUES (?, ?, ?, ?)
-        ''', (
-            data.get('username', ''),
-            data.get('outVideo', ''),
-            data.get('conf', 0.5),
-            data.get('startTime', '')
-        ))
-        
-        conn.commit()
-        record_id = cursor.lastrowid
-        conn.close()
-        
-        print(f"✅ 摄像头记录保存成功，ID: {record_id}")
-        return record_id
+        try:
+            # 转换路径为相对路径
+            out_video = self.convert_to_relative_path(data.get('outVideo', ''))
+            
+            # 调试信息
+            print(f"📊 保存摄像头记录:")
+            print(f"  - outVideo: {out_video}")
+            
+            cursor.execute('''
+                INSERT INTO camera_records 
+                (username, out_video, conf, start_time)
+                VALUES (?, ?, ?, ?)
+            ''', (
+                data.get('username', ''),
+                out_video,
+                data.get('conf', 0.5),
+                data.get('startTime', '')
+            ))
+            
+            conn.commit()
+            record_id = cursor.lastrowid
+            
+            print(f"✅ 摄像头记录保存成功，ID: {record_id}")
+            return record_id
+            
+        except Exception as e:
+            print(f"❌ 保存摄像头记录失败: {e}")
+            conn.rollback()
+            raise e
+            
+        finally:
+            conn.close()
     
     def get_camera_records(self, page=1, page_size=10, username=None):
         """获取摄像头检测记录（分页）"""
@@ -382,8 +448,8 @@ class VideoProcessingApp:
         # 创建必要目录（基于Flask项目根目录）
         self.create_directories()
         
-        # 初始化数据库管理器
-        self.db_manager = DatabaseManager()
+        # 初始化数据库管理器 - 传递base_dir参数
+        self.db_manager = DatabaseManager(base_dir=self.BASE_DIR)
         
         # 新增：初始化用户管理器
         self.user_manager = UserManager()
@@ -628,7 +694,7 @@ class VideoProcessingApp:
 
     # 新增：带进度反馈的视频处理函数
     def process_video_with_progress(self, video_path, username, conf, start_time):
-        """处理视频并实时推送进度"""
+        """处理视频并实时推送进度 - 修复版本"""
         try:
             print(f"🎬 开始处理视频: {video_path}")
             
@@ -728,12 +794,18 @@ class VideoProcessingApp:
             # 保存记录到数据库
             record_data = {
                 "username": username,
-                "inputVideo": video_path,
+                "inputVideo": video_path,  # 原始路径，让DatabaseManager处理
                 "outVideo": result_url,
                 "conf": conf,
                 "startTime": start_time
             }
-            self.db_manager.add_video_record(record_data)
+            
+            try:
+                self.db_manager.add_video_record(record_data)
+                print(f"✅ 视频记录保存成功: {result_url}")
+            except Exception as db_error:
+                print(f"⚠️  数据库记录保存失败，但视频已生成: {db_error}")
+                # 继续处理，不要因为数据库错误中断视频处理
             
             # 通知前端处理完成
             print(f"✅ 准备发送视频结果到前端: {result_url}")
@@ -1049,79 +1121,6 @@ class VideoProcessingApp:
         
             return jsonify(response_data)
         
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return jsonify({
-                "status": 500,
-                "message": f"杂草检测出错: {str(e)}",
-                "label": "",
-                "confidence": 0.0,
-                "allTime": 0.0,
-                "outImg": "",
-                "detections": [],
-                "detection_count": 0
-            })
-            
-            # 记录检测开始时间
-            start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # 优先使用直接检测（稳定，避免ImagePredictor兼容问题）
-            detections = self.direct_detection(img_abs_path)
-            detection_count = len(detections)
-            
-            # 计算检测耗时
-            all_time = (datetime.now() - start_time).total_seconds()
-            
-            # 处理检测结果：提取标签和置信度
-            labels = [d['weed_name'] for d in detections] if detections else []
-            confidences = [d['confidence'] for d in detections] if detections else []
-            confidence_val = confidences[0] if confidences else 0.0
-            label_str = ",".join(labels) if labels else "未检测到杂草"
-            
-            # 核心修改1：保存检测结果图片到Flask项目内的results目录（带时间戳，避免重复）
-            result_img_name = f"result_{int(datetime.now().timestamp())}.jpg"
-            result_img_dir = os.path.join(self.paths['results'], 'images')
-            result_img_path = os.path.join(result_img_dir, result_img_name)
-            os.makedirs(result_img_dir, exist_ok=True)
-            # 复制检测后的结果图（从项目内临时路径复制）
-            if os.path.exists(self.paths['temp_result']):
-                shutil.copy(self.paths['temp_result'], result_img_path)
-                print(f"📸 结果图片已保存到: {result_img_path}")
-            # 构建前端可访问的结果图URL（适配Vite代理）
-            out_img_url = f"/results/images/{result_img_name}"
-            
-            # 保存检测记录到数据库
-            if detection_count > 0 or label_str != "未检测到杂草":
-                record_data = {
-                    "username": self.data["username"],
-                    "inputImg": self.data["inputImg"],
-                    "outImg": out_img_url,
-                    "label": labels,
-                    "confidence": confidences,
-                    "allTime": all_time,
-                    "conf": self.data["conf"],
-                    "startTime": start_time,  # 使用服务器时间
-                    "detections": detections
-                }
-                self.db_manager.add_img_record(record_data)
-            
-            # 构造成功响应
-            response_data = {
-                "status": 200,
-                "message": f"杂草检测成功，共检测到 {detection_count} 个目标" if detection_count else "未检测到杂草",
-                "outImg": out_img_url,
-                "allTime": round(all_time, 4),
-                "confidence": round(confidence_val, 4),
-                "label": label_str,
-                "confidences": [round(c,4) for c in confidences],
-                "labels": labels,
-                "detections": detections,
-                "detection_count": detection_count
-            }
-            
-            return jsonify(response_data)
-            
         except Exception as e:
             import traceback
             traceback.print_exc()
