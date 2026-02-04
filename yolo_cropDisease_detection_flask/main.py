@@ -39,6 +39,30 @@ class DatabaseManager:
         self.init_database()
         print(f"✅ 数据库管理器初始化完成: {self.db_path}")
     
+    # 在 DatabaseManager 类的 init_database 方法中添加时区支持
+    def init_database(self):
+        """初始化数据库表（带时区支持）"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # 🔥 设置数据库连接时区（SQLite本身不支持，但可以在应用层处理）
+        cursor.execute("PRAGMA foreign_keys = ON")
+        
+        # 🔥 创建带时区信息的时间戳字段
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS camera_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                out_video TEXT,
+                conf REAL,
+                start_time DATETIME NOT NULL,  -- 存储为UTC时间
+                created_at DATETIME DEFAULT (datetime('now', 'localtime'))  -- 自动使用本地时间
+            )
+        ''')
+        
+        conn.commit()
+        conn.close()
+
     def convert_to_relative_path(self, path):
         """将绝对路径转换为相对于BASE_DIR的相对路径"""
         if not path:
@@ -1338,6 +1362,20 @@ class VideoProcessingApp:
         
         try:
             self.camera_lock = True
+            # 关键修复：使用本地时间，并格式化为正确的字符串
+            from datetime import datetime, timezone, timedelta
+            
+            # 获取本地时间（东八区）
+            local_tz = timezone(timedelta(hours=8))
+            local_time = datetime.now(local_tz)
+            
+            # 保存用户参数到实例变量，以便后续使用
+            self.camera_data = {
+                "username": request.args.get('username', 'unknown'),
+                "conf": float(request.args.get('conf', 0.5)),
+                # 关键修复：使用格式化的本地时间字符串
+                "startTime": local_time.strftime("%Y-%m-%d %H:%M:%S")
+            }
             
             # 保存用户参数到实例变量，以便后续使用
             self.camera_data = {

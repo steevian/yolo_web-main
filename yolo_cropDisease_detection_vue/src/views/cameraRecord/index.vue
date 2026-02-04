@@ -198,22 +198,57 @@ const getVideoUrl = (videoPath: string) => {
 };
 
 // 格式化日期时间
+// 在 index.vue 中，简单修复时间显示
 const formatDateTime = (dateStr: string) => {
-	if (!dateStr) return '';
-	
-	try {
-		const date = new Date(dateStr);
-		return date.toLocaleString('zh-CN', {
-			year: 'numeric',
-			month: '2-digit',
-			day: '2-digit',
-			hour: '2-digit',
-			minute: '2-digit',
-			second: '2-digit'
-		});
-	} catch (error) {
-		return dateStr;
-	}
+    if (!dateStr) return '';
+    
+    try {
+        // 简单修复：直接添加8小时（针对UTC时间存储的情况）
+        const date = new Date(dateStr);
+        
+        // 如果是UTC时间，添加8小时转换为中国时间
+        const adjustedDate = new Date(date.getTime() + (8 * 60 * 60 * 1000));
+        
+        // 或者使用更简单的方法：直接解析并格式化为本地时间
+        // 这种方法会使用浏览器的本地时区设置
+        return adjustedDate.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).replace(/\//g, '-');
+    } catch (error) {
+        console.error('时间格式化错误:', error, '原始字符串:', dateStr);
+        return dateStr;
+    }
+};
+
+// 同时添加一个专门用于数据库时间的格式化函数
+const formatDatabaseDateTime = (dateStr: string) => {
+    if (!dateStr) return '';
+    
+    try {
+        // 处理数据库返回的时间格式
+        // 假设数据库返回的是 UTC 时间，需要转换为本地时间（UTC+8）
+        const utcDate = new Date(dateStr + 'Z'); // 添加Z表示UTC时间
+        const localDate = new Date(utcDate.getTime() + (8 * 60 * 60 * 1000)); // UTC+8
+        
+        return localDate.toLocaleString('zh-CN', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).replace(/\//g, '-');
+    } catch (error) {
+        console.error('数据库时间格式化错误:', error, '原始字符串:', dateStr);
+        return dateStr;
+    }
 };
 
 // 格式化日期（仅日期部分）
