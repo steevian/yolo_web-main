@@ -6,7 +6,7 @@
 					v-model="state.form.avatar"
 					ref="uploadFile"
 					class="avatar-uploader"
-					action="http://${currentHost}:5000/flask/upload"
+					:action="`${flaskBaseUrl}/flask/upload`"
 					:show-file-list="false"
 					:on-success="handleAvatarSuccessone"
 				>
@@ -48,7 +48,7 @@
 					</el-col>
 					<el-col :xs="24" :sm="24" :md="24" :lg="24" :xl="24" class="mb20">
 						<el-form-item label="角色">
-							<el-select v-model="state.form.role" value-key="id" placeholder="请选择注册角色" style="width: 100%">
+							<el-select v-model="state.form.role" placeholder="请选择注册角色" style="width: 100%">
 								<el-option v-for="item in option" :key="item.id" :label="item.label" :value="item.role" />
 							</el-select>
 						</el-form-item>
@@ -66,43 +66,41 @@
 </template>
 
 <script setup lang="ts" name="systemRoleDialog">
-import { nextTick, computed, reactive, ref } from 'vue';
+import { nextTick, reactive, ref } from 'vue';
 import type { UploadInstance, UploadProps } from 'element-plus';
 import { ElMessage } from 'element-plus';
 import { Plus } from '@element-plus/icons-vue';
 import request from '/@/utils/request';
 
-// 定义子组件向父组件传值/事件
+// 定义类型（补充缺失的类型）
+type RowRoleType = Record<string, any>;
+type TreeType = Record<string, any>;
+
+// 子组件向父组件传值/事件
 const emit = defineEmits(['refresh']);
 
 const imageUrl = ref('');
 const uploadFile = ref<UploadInstance>();
 
+// Flask服务基础URL
 const flaskBaseUrl = 'http://192.168.0.101:5000';
 
-const handleAvatarSuccessone: UploadProps['onSuccess'] = (response, uploadFile) => {
-  imageUrl.value = `${flaskBaseUrl}${response.data}`; // 拼接完整 URL
+// 头像上传成功处理
+const handleAvatarSuccessone: UploadProps['onSuccess'] = (response) => {
+  imageUrl.value = `${flaskBaseUrl}${response.data}`;
   state.form.avatar = response.data;
 };
 
-// 打开修改弹窗时（openDialog 函数内）
-if (type === 'edit') {
-  state.form = row;
-  state.dialog.title = '修改信息';
-  state.dialog.submitTxt = '修 改';
-  // 关键修改：拼接完整 URL 显示原有头像
-  imageUrl.value = `${flaskBaseUrl}${state.form.avatar}`; 
-}
-
+// 角色下拉选项
 const option = [
 	{ id: 1, label: '管理员', role: 'admin' },
 	{ id: 2, label: '普通用户', role: 'common' },
 ];
 
-// 定义变量内容
+// 表单&弹窗状态
 const roleDialogFormRef = ref();
 const state = reactive({
-	form: {} as any,
+	form: {} as RowRoleType,
 	menuData: [] as TreeType[],
 	menuProps: {
 		children: 'children',
@@ -110,81 +108,75 @@ const state = reactive({
 	},
 	dialog: {
 		isShowDialog: false,
-		type: '',
 		title: '',
 		submitTxt: '',
 	},
 });
 
-// 打开弹窗
-const openDialog = (type: string, row: RowRoleType) => {
+// 打开弹窗（区分新增/修改）
+const openDialog = (type: 'add' | 'edit', row: RowRoleType = {}) => {
+	state.dialog.isShowDialog = true;
 	if (type === 'edit') {
-		state.form = row;
+		// 深拷贝避免修改原表格数据
+		state.form = { ...row };
 		state.dialog.title = '修改信息';
 		state.dialog.submitTxt = '修 改';
-		imageUrl.value = state.form.avatar;
+		// 拼接头像完整URL
+		imageUrl.value = `${flaskBaseUrl}${state.form.avatar || ''}`;
 	} else {
+		state.form = {};
 		state.dialog.title = '新增信息';
 		state.dialog.submitTxt = '新 增';
-		// 清空表单，此项需加表单验证才能使用
+		// 清空上传记录
 		nextTick(() => {
-			uploadFile.value!.clearFiles(); //该方法就是清理上传列表
+			uploadFile.value?.clearFiles();
 			imageUrl.value = '';
-		});
-	}
-	state.dialog.isShowDialog = true;
-};
-// 关闭弹窗
-const closeDialog = () => {
-	state.dialog.isShowDialog = false;
-};
-// 取消
-const onCancel = () => {
-	closeDialog();
-};
-// 提交
-const onSubmit = () => {
-	if (state.form['role'] == '管理员') {
-		state.form['role'] = 'admin';
-	} else if (state.form['role'] == '普通用户') {
-		state.form['role'] = 'common';
-	} else if (state.form['role'] == '其他用户') {
-		state.form['role'] = 'others';
-	}
-	if (state.dialog.title == '修改信息') {
-		// 转换角色格式（保持原有逻辑）
-		if (state.form['role'] == '管理员') state.form['role'] = 'admin';
-		else if (state.form['role'] == '普通用户') state.form['role'] = 'common';
-		else if (state.form['role'] == '其他用户') state.form['role'] = 'others';
-		
-		// 关键修改：拼接 user_id 到路径
-		request.post(`/flask/user/${state.form.id}`, state.form).then((res) => {
-			if (res.code == 0) {
-			ElMessage.success('修改成功！');
-			setTimeout(() => { closeDialog(); emit('refresh'); }, 500);
-			} else {
-			ElMessage.error(res.msg);
-			}
-		});
-	} else {
-		request.post('/api/user/', state.form).then((res) => {
-			if (res.code == 0) {
-				ElMessage.success('添加成功！');
-			} else {
-				ElMessage({
-					type: 'error',
-					message: res.msg,
-				});
-			}
-			setTimeout(() => {
-				closeDialog();
-				emit('refresh');
-			}, 500);
 		});
 	}
 };
 
-// 暴露变量
+// 关闭弹窗
+const closeDialog = () => {
+	state.dialog.isShowDialog = false;
+};
+
+// 取消操作
+const onCancel = () => {
+	closeDialog();
+};
+
+// 提交表单
+const onSubmit = () => {
+	// 角色格式转换（前端中文转后端英文）
+	if (state.form.role === '管理员') state.form.role = 'admin';
+	else if (state.form.role === '普通用户') state.form.role = 'common';
+
+	if (state.dialog.title === '修改信息') {
+		// 修改用户：调用/flask/user/{id}接口
+		request.post(`/flask/user/${state.form.id}`, state.form).then((res) => {
+			if (res.code === 0) {
+				ElMessage.success('修改成功！');
+				closeDialog();
+				emit('refresh');
+			} else {
+				ElMessage.error(res.msg);
+			}
+		});
+	} else {
+		// 新增用户：调用/flask/user/add接口
+		request.post('/flask/user', state.form).then((res) => {
+			if (res.code === 0) {
+				ElMessage.success('添加成功！');
+				closeDialog();
+				emit('refresh');
+			} else {
+				ElMessage.error(res.msg);
+			}
+		});
+	}
+};
+
+// 暴露方法给父组件
 defineExpose({
 	openDialog,
 });

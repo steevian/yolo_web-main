@@ -9,7 +9,7 @@
 					</el-icon>
 					查询
 				</el-button>
-				<el-button size="default" type="success" class="ml10" @click="onOpenAddRole('add')">
+				<el-button size="default" type="success" class="ml10" @click="onOpenAddRole">
 					<el-icon>
 						<ele-FolderAdd />
 					</el-icon>
@@ -27,12 +27,12 @@
 				<el-table-column prop="role" label="角色" show-overflow-tooltip align="center"></el-table-column>
 				<el-table-column prop="avatar" label="头像" align="center">
 					<template #default="scope">
-					  <img :src="`http://192.168.0.101:5000${scope.row.avatar}`" width="70" height="70" />
+					  <img :src="`http://192.168.0.101:5000${scope.row.avatar || ''}`" width="70" height="70" />
 					</template>
 				</el-table-column>
 				<el-table-column label="操作" width="150">
 					<template #default="scope">
-						<el-button size="small" text type="primary" @click="onOpenEditRole('edit', scope.row)">修改</el-button>
+						<el-button size="small" text type="primary" @click="onOpenEditRole(scope.row)">修改</el-button>
 						<el-button size="small" text type="primary" @click="onRowDel(scope.row)">删除</el-button>
 					</template>
 				</el-table-column>
@@ -51,7 +51,7 @@
 			>
 			</el-pagination>
 		</div>
-		<RoleDialog ref="roleDialogRef" @refresh="getTableData()" />
+		<RoleDialog ref="roleDialogRef" @refresh="getTableData" />
 	</div>
 </template>
 
@@ -59,15 +59,33 @@
 import { defineAsyncComponent, reactive, onMounted, ref } from 'vue';
 import { ElMessageBox, ElMessage } from 'element-plus';
 import request from '/@/utils/request';
+// 引入Element图标
+import { Search as eleSearch, FolderAdd as eleFolderAdd } from '@element-plus/icons-vue';
 
-// 引入组件
+// 定义类型
+type SysRoleState = {
+	tableData: {
+		data: Record<string, any>[];
+		total: number;
+		loading: boolean;
+		param: {
+			search: string;
+			pageNum: number;
+			pageSize: number;
+		};
+	};
+};
+
+// 引入弹窗组件
 const RoleDialog = defineAsyncComponent(() => import('./dialog.vue'));
 
-// 定义变量内容
+// 弹窗组件引用
 const roleDialogRef = ref();
+
+// 页面状态
 const state = reactive<SysRoleState>({
 	tableData: {
-		data: [] as any,
+		data: [],
 		total: 0,
 		loading: false,
 		param: {
@@ -78,89 +96,74 @@ const state = reactive<SysRoleState>({
 	},
 });
 
+// 获取用户列表
 const getTableData = () => {
 	state.tableData.loading = true;
 	request
-		.get('/api/user', {
+		.get('/flask/user', {
 			params: state.tableData.param,
 		})
 		.then((res) => {
-			if (res.code == 0) {
-				state.tableData.data = [];
-				setTimeout(() => {
-					state.tableData.loading = false;
-				}, 500);
-				for (let i = 0; i < res.data.records.length; i++) {
-					state.tableData.data[i] = res.data.records[i];
-					state.tableData.data[i]['num'] = i + 1;
-					if (state.tableData.data[i]['role'] == 'admin') {
-						state.tableData.data[i]['role'] = '管理员';
-					} else if (state.tableData.data[i]['role'] == 'common') {
-						state.tableData.data[i]['role'] = '普通用户';
-					} else if (state.tableData.data[i]['role'] == 'others') {
-						state.tableData.data[i]['role'] = '其他用户';
-					}
-				}
+			state.tableData.loading = false;
+			if (res.code === 0) {
+				// 处理列表数据（序号、角色文字转换）
+				state.tableData.data = res.data.records.map((item: any, index: number) => ({
+					...item,
+					num: index + 1,
+					role: item.role === 'admin' ? '管理员' : '普通用户'
+				}));
 				state.tableData.total = res.data.total;
 			} else {
-				ElMessage({
-					type: 'error',
-					message: res.msg,
-				});
+				ElMessage.error(res.msg);
 			}
+		})
+		.catch(() => {
+			state.tableData.loading = false;
+			ElMessage.error('获取用户列表失败');
 		});
 };
 
-// 打开新增角色弹窗
-const onOpenAddRole = (type: string) => {
-	roleDialogRef.value.openDialog(type);
-};
-// 打开修改角色弹窗
-const onOpenEditRole = (type: string, row: Object) => {
-	roleDialogRef.value.openDialog(type, row);
+// 打开新增弹窗
+const onOpenAddRole = () => {
+	roleDialogRef.value?.openDialog('add');
 };
 
-// 删除角色
-const onRowDel = (row: any) => {
-	ElMessageBox.confirm(`此操作将永久删除该信息，是否继续?`, '提示', {
-		confirmButtonText: '确认',
-		cancelButtonText: '取消',
-		type: 'warning',
+// 打开修改弹窗
+const onOpenEditRole = (row: Record<string, any>) => {
+	roleDialogRef.value?.openDialog('edit', row);
+};
+
+// 删除用户
+const onRowDel = (row: Record<string, any>) => {
+	ElMessageBox.confirm('此操作将永久删除该用户，是否继续?', '提示', {
+		type: 'warning'
 	})
 		.then(() => {
-			console.log(row);
-			request.delete('/api/user/' + row.id).then((res) => {
-				if (res.code == 0) {
-					console.log(res.data);
-					ElMessage({
-						type: 'success',
-						message: '删除成功！',
-					});
+			request.delete(`/flask/user/${row.id}`).then((res) => {
+				if (res.code === 0) {
+					ElMessage.success('删除成功！');
+					getTableData();
 				} else {
-					ElMessage({
-						type: 'error',
-						message: res.msg,
-					});
+					ElMessage.error(res.msg);
 				}
 			});
-			setTimeout(() => {
-				getTableData();
-			}, 500);
 		})
 		.catch(() => {});
 };
-// 分页改变
+
+// 分页-每页条数改变
 const onHandleSizeChange = (val: number) => {
 	state.tableData.param.pageSize = val;
 	getTableData();
 };
-// 分页改变
+
+// 分页-当前页改变
 const onHandleCurrentChange = (val: number) => {
 	state.tableData.param.pageNum = val;
 	getTableData();
 };
 
-// 页面加载时
+// 页面加载初始化
 onMounted(() => {
 	getTableData();
 });
