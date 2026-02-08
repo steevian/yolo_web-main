@@ -24,7 +24,7 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
     plugins: [
       vue(), 
       vueSetupExtend(),
-      mkcert() // 启用mkcert插件
+      mkcert() // 启用mkcert插件（支持HTTPS）
     ],
     root: process.cwd(),
     resolve: { alias },
@@ -41,158 +41,75 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
       port: (env.VITE_PORT as unknown as number) || 5173,
       open: env.VITE_OPEN === 'true' || false,
       hmr: true,
-      https: true, // 启用HTTPS
+      https: true, // 启用HTTPS（前端）
       proxy: {
-        // 🔥 关键修改：代理目标仍使用HTTP（Flask内部不需要HTTPS）
+        // 🔥 1. 核心：所有后端接口（/flask前缀）统一转发（优先级最高）
         '/flask': {
+          target: FLASK_BASE_URL,
+          ws: true, // 支持WebSocket（视频进度推送、摄像头流）
+          changeOrigin: true, // 跨域必备
+          secure: false, // 允许目标为HTTP（Flask未启用HTTPS）
+        },
+
+        // 🔥 2. 静态资源路径直接转发（后端已配置路由，无需rewrite）
+        '/uploads': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/results': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+        },
+        '/runs': {
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+        },
+
+        // 🔥 3. WebSocket专用代理（视频处理进度、摄像头流）
+        '/socket.io': {
           target: FLASK_BASE_URL,
           ws: true,
           changeOrigin: true,
           secure: false,
         },
-          // 🔥 修复：处理包含绝对路径的图片请求
-        '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_weedDetection_detection_flask': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => {
-            // 移除前缀，保留相对路径
-            const cleanPath = path.replace(
-              '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_weedDetection_detection_flask/', 
-              '/'
-            );
-            console.log('📸 转换绝对路径:', path, '->', cleanPath);
-            return cleanPath;
-          }
-        },
-  
-        // 同时添加通用路径处理
-        '/uploads/**': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => {
-            // 如果路径包含Windows绝对路径，提取相对部分
-            if (path.includes('D:/') || path.includes('d:/')) {
-              const match = path.match(/\/uploads\/([Dd]:\/[^/]+\/)(.+)/);
-              if (match) {
-                const [, , relativePath] = match;
-                return `/${relativePath}`;
-              }
-            }
-            return path;
-          }
-        },
-        
-         // 2.3新增：直接代理/stopCamera
-        '/stopCamera': {
-         target: FLASK_BASE_URL,
-         changeOrigin: true,
-         secure: false,
-        },
 
-        '/upload': {
+        // 🔥 4. 独立接口代理（兼容可能遗留的直接请求）
+        '/stopCamera': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
           secure: false,
         },
-        
+        '/upload': { // 兼容前端上传组件的action="/upload"
+          target: FLASK_BASE_URL,
+          changeOrigin: true,
+          secure: false,
+        },
         '/predict': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
           secure: false,
           ws: true,
         },
-        
         '/predictVideo': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
           secure: false,
         },
-        
-        '/predictCamera': {  // 🔥 新增摄像头流代理
+        '/predictCamera': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
           secure: false,
         },
-        
-        '/uploads': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          secure: false,
-        },
-        
-        '/results': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          secure: false,
-        },
-        
-        '/runs': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          secure: false,
-        },
-        
-        '/api/user': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          rewrite: (path) => {
-            const cleanPath = path.replace(/^\/api\/user/, '');
-            const idMatch = cleanPath.match(/^\/(\d+)$/);
-            if (idMatch) {
-              return `/flask/user/${idMatch[1]}`;
-            }
-            if (cleanPath && cleanPath !== '/') {
-              return `/flask/user${cleanPath}`;
-            }
-            return '/flask/user';
-          },
-          secure: false,
-        },
-        
-        '/api/imgRecords': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          rewrite: () => '/flask/img_records',
-          secure: false,
-        },
-        
-        '/api/videoRecords': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          rewrite: () => '/flask/video_records',
-          secure: false,
-        },
-        
-        '/api/cameraRecords': {
-          target: FLASK_BASE_URL,
-          changeOrigin: true,
-          rewrite: () => '/flask/camera_records',
-          secure: false,
-        },
-        
+
+        // 🔥 5. 简化/api代理（仅处理未迁移的旧请求，可选保留）
         '/api': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
-          rewrite: (path) => {
-            const cleanPath = path.replace(/^\/api/, '');
-            if (cleanPath.match(/^\/(\d+)$/)) {
-              return cleanPath;
-            }
-            if (!cleanPath.startsWith('/flask') && !cleanPath.startsWith('/uploads')) {
-              return `/flask${cleanPath}`;
-            }
-            return cleanPath;
-          },
           secure: false,
-        },
-        
-        '/socket.io': {
-          target: FLASK_BASE_URL,
-          ws: true,
-          changeOrigin: true,
-          secure: false,
+          rewrite: (path) => path.replace(/^\/api/, '/flask'), // 旧/api请求自动转为/flask前缀
         },
       },
     },
@@ -226,4 +143,5 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
     },
   };
 });
+
 export default viteConfig;

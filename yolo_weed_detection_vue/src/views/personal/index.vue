@@ -11,7 +11,7 @@
 									v-model="state.form.avatar"
 									ref="uploadFile"
 									class="avatar-uploader"
-									action="http://${currentHost}:5000/flask/upload"
+									action="http://192.168.0.101:5000/flask/upload"
 									:show-file-list="false"
 									:on-success="handleAvatarSuccessone"
 								>
@@ -76,66 +76,74 @@ import { Plus } from '@element-plus/icons-vue';
 const imageUrl = ref('');
 const uploadFile = ref<UploadInstance>();
 
+// Flask服务基础URL（与后端一致）
+const flaskBaseUrl = 'http://192.168.0.101:5000';
+
+// 头像上传成功后的处理
 const handleAvatarSuccessone: UploadProps['onSuccess'] = (response, uploadFile) => {
-	// console.log(response);
-	imageUrl.value = URL.createObjectURL(uploadFile.raw!);
-	state.form.avatar = response.data;
+  imageUrl.value = `${flaskBaseUrl}${response.data}`; // 拼接完整头像URL
+  state.form.avatar = response.data; // 后端存储用相对路径
 };
 
-// 定义变量内容
+// 定义变量
 const state = reactive({
 	form: {} as any,
 });
 const stores = useUserInfo();
 const { userInfos } = storeToRefs(stores);
-// 初始化表格数据
+
+// 合并后的初始化数据函数（删除了重复声明）
 const getTableData = () => {
-	// console.log(userInfos.value.userName);
-	request.get('/api/user/' + userInfos.value.userName).then((res) => {
-		// console.log(res);
-		if (res.code == 0) {
-			state.form = res.data;
-			if (state.form['role'] == 'admin') {
-				state.form['role'] = '管理员';
-			} else if (state.form['role'] == 'common') {
-				state.form['role'] = '普通用户';
-			} else if (state.form['role'] == 'others') {
-				state.form['role'] = '其他用户';
-			}
-			imageUrl.value = state.form.avatar;
-			// console.log(state.form);
-		} else {
-			ElMessage({
-				type: 'error',
-				message: res.msg,
-			});
-		}
-	});
+  // 统一请求/flask前缀的接口
+  request.get('/flask/user/' + userInfos.value.userName).then((res) => {
+    if (res.code == 0) {
+      state.form = res.data;
+      // 角色文字转换（后端存的是英文，前端显示中文）
+      if (state.form['role'] == 'admin') {
+        state.form['role'] = '管理员';
+      } else if (state.form['role'] == 'common') {
+        state.form['role'] = '普通用户';
+      } else if (state.form['role'] == 'others') {
+        state.form['role'] = '其他用户';
+      }
+      // 拼接完整头像URL
+      imageUrl.value = `${flaskBaseUrl}${state.form.avatar}`;
+    } else {
+      ElMessage({
+        type: 'error',
+        message: res.msg,
+      });
+    }
+  });
 };
 
+// 修改信息提交函数
 const upData = () => {
-	if (state.form['role'] == '管理员') {
-		state.form['role'] = 'admin';
-	} else if (state.form['role'] == '普通用户') {
-		state.form['role'] = 'common';
-	} else if (state.form['role'] == '其他用户') {
-		state.form['role'] = 'others';
-	}
-	request.post('/api/user/update', state.form).then((res) => {
-		if (res.code == 0) {
-			ElMessage.success('修改成功！');
-		} else {
-			ElMessage({
-				type: 'error',
-				message: res.msg,
-			});
-		}
-	});
-	setTimeout(() => {
-		getTableData();
-	}, 200);
+  // 角色转换为后端需要的英文
+  if (state.form['role'] == '管理员') state.form['role'] = 'admin';
+  else if (state.form['role'] == '普通用户') state.form['role'] = 'common';
+  else if (state.form['role'] == '其他用户') state.form['role'] = 'others';
+  
+  // 获取用户ID（从Pinia的登录信息中读取）
+  const userId = userInfos.value.id;
+  if (!userId) {
+    ElMessage.error('用户ID不存在，请重新登录');
+    return;
+  }
+  
+  // 提交修改请求（路径拼接user_id）
+  request.post(`/flask/user/${userId}`, state.form).then((res) => {
+    if (res.code == 0) {
+      ElMessage.success('修改成功！');
+      // 重新拉取数据更新页面
+      getTableData();
+    } else {
+      ElMessage.error(res.msg);
+    }
+  });
 };
-// 页面加载时
+
+// 页面加载时初始化数据
 onMounted(() => {
 	getTableData();
 });

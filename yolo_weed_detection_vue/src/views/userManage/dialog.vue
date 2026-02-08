@@ -78,11 +78,21 @@ const emit = defineEmits(['refresh']);
 const imageUrl = ref('');
 const uploadFile = ref<UploadInstance>();
 
+const flaskBaseUrl = 'http://192.168.0.101:5000';
+
 const handleAvatarSuccessone: UploadProps['onSuccess'] = (response, uploadFile) => {
-	console.log(response);
-	imageUrl.value = URL.createObjectURL(uploadFile.raw!);
-	state.form.avatar = response.data;
+  imageUrl.value = `${flaskBaseUrl}${response.data}`; // 拼接完整 URL
+  state.form.avatar = response.data;
 };
+
+// 打开修改弹窗时（openDialog 函数内）
+if (type === 'edit') {
+  state.form = row;
+  state.dialog.title = '修改信息';
+  state.dialog.submitTxt = '修 改';
+  // 关键修改：拼接完整 URL 显示原有头像
+  imageUrl.value = `${flaskBaseUrl}${state.form.avatar}`; 
+}
 
 const option = [
 	{ id: 1, label: '管理员', role: 'admin' },
@@ -142,18 +152,18 @@ const onSubmit = () => {
 		state.form['role'] = 'others';
 	}
 	if (state.dialog.title == '修改信息') {
-		request.post('/api/user/update', state.form).then((res) => {
+		// 转换角色格式（保持原有逻辑）
+		if (state.form['role'] == '管理员') state.form['role'] = 'admin';
+		else if (state.form['role'] == '普通用户') state.form['role'] = 'common';
+		else if (state.form['role'] == '其他用户') state.form['role'] = 'others';
+		
+		// 关键修改：拼接 user_id 到路径
+		request.post(`/flask/user/${state.form.id}`, state.form).then((res) => {
 			if (res.code == 0) {
-				ElMessage.success('修改成功！');
-				setTimeout(() => {
-					closeDialog();
-					emit('refresh');
-				}, 500);
+			ElMessage.success('修改成功！');
+			setTimeout(() => { closeDialog(); emit('refresh'); }, 500);
 			} else {
-				ElMessage({
-					type: 'error',
-					message: res.msg,
-				});
+			ElMessage.error(res.msg);
 			}
 		});
 	} else {
