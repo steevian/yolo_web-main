@@ -292,9 +292,9 @@ const getImageUrl = (path: string): string => {
     }
     
     // 尝试提取项目名之后的部分
-    const projectIndex = normalized.indexOf('yolo_cropDisease_detection_flask/');
+    const projectIndex = normalized.indexOf('yolo_weedDetection_detection_flask/');
     if (projectIndex !== -1) {
-      const relative = normalized.substring(projectIndex + 'yolo_cropDisease_detection_flask/'.length);
+      const relative = normalized.substring(projectIndex + 'yolo_weedDetection_detection_flask/'.length);
       return `/${relative}`;
     }
     

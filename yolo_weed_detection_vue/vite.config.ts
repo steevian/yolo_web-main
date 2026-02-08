@@ -51,14 +51,14 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
           secure: false,
         },
           // 🔥 修复：处理包含绝对路径的图片请求
-        '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_cropDisease_detection_flask': {
+        '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_weedDetection_detection_flask': {
           target: FLASK_BASE_URL,
           changeOrigin: true,
           secure: false,
           rewrite: (path) => {
             // 移除前缀，保留相对路径
             const cleanPath = path.replace(
-              '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_cropDisease_detection_flask/', 
+              '/uploads/d:/cyd/Desktop/yolo_web-main/yolo_weedDetection_detection_flask/', 
               '/'
             );
             console.log('📸 转换绝对路径:', path, '->', cleanPath);

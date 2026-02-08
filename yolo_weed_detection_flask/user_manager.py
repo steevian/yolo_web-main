@@ -1,4 +1,4 @@
-# D:\cyd\Desktop\yolo_web-main\yolo_cropDisease_detection_flask\user_manager.py
+# D:\cyd\Desktop\yolo_web-main\yolo_weedDetection_detection_flask\user_manager.py
 
 import sqlite3
 import hashlib
