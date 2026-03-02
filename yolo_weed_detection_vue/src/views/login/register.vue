@@ -54,11 +54,11 @@ const ruleForm = reactive({
 const registerRules = reactive<FormRules>({
 	username: [
 		{ required: true, message: '请输入账号', trigger: 'blur' },
-		{ min: 3, max: 5, message: '长度在3-5个字符', trigger: 'blur' },
+		{ min: 3, max: 20, message: '长度在3-20个字符', trigger: 'blur' },
 	],
 	password: [
 		{ required: true, message: '请输入密码', trigger: 'blur' },
-		{ min: 3, max: 5, message: '长度在3-5个字符', trigger: 'blur' },
+		{ min: 3, max: 20, message: '长度在3-20个字符', trigger: 'blur' },
 	],
 	confirm: [
 		{ required: true, message: '请确认密码', trigger: 'blur' },
@@ -79,12 +79,12 @@ const submitForm = (formEl: FormInstance | undefined) => {
 	if (!formEl) return;
 	formEl.validate((valid) => {
 		if (valid) {
-			request.post('/api/user/register', ruleForm).then((res) => {
+			request.post('/flask/register', ruleForm).then((res) => {
 				if (res.code == 0) {
 					router.push('/login');
 					ElMessage.success('注册成功！');
 				} else {
-					ElMessage.error('用户名已存在！');
+					ElMessage.error(res.msg || '注册失败');
 				}
 			});
 		} else {

@@ -653,7 +653,9 @@ class VideoProcessingApp:
         # 新增：用户认证相关接口
         self.app.add_url_rule('/flask/login', 'login', self.user_login, methods=['POST'])
         self.app.add_url_rule('/flask/register', 'register', self.user_register, methods=['POST'])
+        self.app.add_url_rule('/flask/user/register', 'user_register_compat', self.user_register, methods=['POST'])
         self.app.add_url_rule('/flask/user', 'get_all_users', self.get_all_users, methods=['GET'])
+        self.app.add_url_rule('/flask/user', 'add_user', self.add_user, methods=['POST'])
         self.app.add_url_rule('/flask/user/<username>', 'get_user_by_username', self.get_user_by_username, methods=['GET'])
         self.app.add_url_rule('/flask/user/<int:user_id>', 'update_user', self.update_user, methods=['POST'])
         self.app.add_url_rule('/flask/user/<int:user_id>', 'delete_user', self.delete_user, methods=['DELETE'])
@@ -1866,7 +1868,7 @@ class VideoProcessingApp:
             # 提取并去除参数首尾空格
             username = data.get('username', '').strip()
             password = data.get('password', '').strip()
-            confirm = data.get('confirm', '').strip()
+            confirm = data.get('confirm', '').strip() or data.get('confirm_password', '').strip() or password
         
             # 调用用户管理的注册方法
             result = self.user_manager.register_user(
@@ -1885,6 +1887,31 @@ class VideoProcessingApp:
             print(f"注册接口错误: {e}")
             import traceback
             traceback.print_exc()
+            return jsonify({"code": 500, "msg": f"服务器内部错误: {str(e)}"})
+
+    def add_user(self):
+        """新增用户接口（后台管理）"""
+        try:
+            data = request.get_json() or {}
+
+            username = data.get('username', '').strip()
+            password = data.get('password', '').strip()
+
+            result = self.user_manager.register_user(
+                username=username,
+                password=password,
+                confirm_password=data.get('confirm', '').strip() or password,
+                name=data.get('name', username),
+                sex=data.get('sex', ''),
+                email=data.get('email', ''),
+                tel=data.get('tel', ''),
+                avatar=data.get('avatar', '/uploads/images/default_avatar.png'),
+                role=data.get('role', 'common')
+            )
+            return jsonify(result)
+
+        except Exception as e:
+            print(f"新增用户接口错误: {e}")
             return jsonify({"code": 500, "msg": f"服务器内部错误: {str(e)}"})
     
     def get_all_users(self):

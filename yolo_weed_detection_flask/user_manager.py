@@ -83,6 +83,9 @@ class UserManager:
             
             if len(username) < 3 or len(username) > 20:
                 return {"code": 400, "msg": "用户名长度需在3-20个字符之间"}
+
+            if len(password) < 3 or len(password) > 20:
+                return {"code": 400, "msg": "密码长度需在3-20个字符之间"}
             
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
