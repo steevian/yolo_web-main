@@ -8,7 +8,6 @@ PROJECT_ROOT = r"D:\cyd\Desktop\yolo_web-main"
 EXCLUDE_DIRS = {".git", "node_modules", "dist", "target", "__pycache__", "venv", "env"}
 # 文件夹重命名映射
 FOLDER_RENAME_MAP = {
-    "yolo_weedDetection_detection_springboot": "yolo_weed_detection_springboot",
     "yolo_weedDetection_detection_vue": "yolo_weed_detection_vue",
     "yolo_weedDetection_detection_flask": "yolo_weed_detection_flask",
     "weeddetection": "weeddetection",

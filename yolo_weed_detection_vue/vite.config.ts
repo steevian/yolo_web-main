@@ -18,7 +18,6 @@ const alias: Record<string, string> = {
 const viteConfig = defineConfig((mode: ConfigEnv) => {
   const env = loadEnv(mode.mode, process.cwd());
   const flaskBaseUrl = env.VITE_FLASK_BASE_URL || 'http://127.0.0.1:8080';
-  const springBootBaseUrl = env.VITE_SPRINGBOOT_BASE_URL || 'http://127.0.0.1:9999';
   return {
     plugins: [
       vue(), 
@@ -94,27 +93,6 @@ const viteConfig = defineConfig((mode: ConfigEnv) => {
           target: flaskBaseUrl,
           changeOrigin: true,
           secure: false,
-        },
-        '/api': {
-          target: flaskBaseUrl,
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/api/, '/flask'), // 旧/api请求自动转为/flask前缀
-        },
-
-        '/springboot': {
-          target: springBootBaseUrl,
-          changeOrigin: true,
-          secure: false, // SpringBoot若未启用HTTPS则设为false
-          // 可选：若SpringBoot接口无统一前缀，可添加rewrite
-          // rewrite: (path) => path.replace(/^\/springboot/, ''),
-        },
-        // 若SpringBoot有特定接口前缀（如/api），补充代理
-        '/spring-api': {
-          target: springBootBaseUrl,
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/spring-api/, '/api'),
         },
       },
     },

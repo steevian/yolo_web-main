@@ -63,6 +63,8 @@ import jwt
 import hashlib
 from user_manager import UserManager
 from flask_cors import CORS
+from core.settings import get_app_config
+from core.database import get_sqlite_conn
 
 class DatabaseManager:
     """SQLite 数据库管理器 - 修复路径问题版本"""
@@ -73,13 +75,17 @@ class DatabaseManager:
         else:
             self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         
-        # 数据库路径
-        self.db_path = os.path.join(self.BASE_DIR, db_path)
+        configured_db_path = os.getenv('SQLITE_DB_PATH', db_path)
+        self.db_path = configured_db_path if os.path.isabs(configured_db_path) else os.path.join(self.BASE_DIR, configured_db_path)
+        self.sqlite_timeout = 10.0
         
         self.init_database()
         print(f"✅ 数据库管理器初始化完成: {self.db_path}")
     
     # init_database 方法被后续定义覆盖，已在后续统一处理所有表和时区设置
+
+    def _get_conn(self, row_factory=False):
+        return get_sqlite_conn(self.db_path, row_factory=row_factory, timeout=self.sqlite_timeout)
 
 
     def convert_to_relative_path(self, path):
@@ -115,7 +121,7 @@ class DatabaseManager:
 
     def init_database(self):
         """初始化数据库表"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         # 图片检测记录表（创建时间使用UTC）
@@ -172,7 +178,7 @@ class DatabaseManager:
     
     def add_img_record(self, data):
         """添加图片检测记录 - 修复路径版本"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
@@ -227,8 +233,7 @@ class DatabaseManager:
     
     def get_img_records(self, page=1, page_size=10, username=None, search_label=None):
         """获取图片检测记录（分页）"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_conn(row_factory=True)
         cursor = conn.cursor()
         
         # 构建查询条件
@@ -286,7 +291,7 @@ class DatabaseManager:
     
     def delete_img_record(self, record_id):
         """删除图片检测记录"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM img_records WHERE id = ?", (record_id,))
@@ -299,7 +304,7 @@ class DatabaseManager:
     
     def add_video_record(self, data):
         """添加视频检测记录 - 增强版本"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
@@ -341,8 +346,7 @@ class DatabaseManager:
     
     def get_video_records(self, page=1, page_size=10, username=None):
         """获取视频检测记录（分页），并返回createdAt字段"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_conn(row_factory=True)
         cursor = conn.cursor()
         
         # 构建查询条件
@@ -390,10 +394,33 @@ class DatabaseManager:
             "page": page,
             "page_size": page_size
         }
+
+    def get_video_record_by_id(self, record_id):
+        """按ID获取单条视频检测记录"""
+        conn = self._get_conn(row_factory=True)
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT * FROM video_records WHERE id = ?", (record_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if not row:
+            return None
+
+        item = dict(row)
+        if item.get('start_time'):
+            item['start_time'] = to_utc_iso_z(item.get('start_time'))
+        else:
+            item['start_time'] = get_now_iso_z()
+        item['recognition_time'] = item['start_time']
+        if not item.get('created_at'):
+            item['created_at'] = get_now_str()
+
+        return item
     
     def delete_video_record(self, record_id):
         """删除视频检测记录"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM video_records WHERE id = ?", (record_id,))
@@ -406,7 +433,7 @@ class DatabaseManager:
     
     def add_camera_record(self, data):
         """添加摄像头检测记录 - 后端统一生成时间"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         try:
@@ -447,8 +474,7 @@ class DatabaseManager:
     
     def get_camera_records(self, page=1, page_size=10, username=None):
         """获取摄像头检测记录（分页），返回字段已转驼峰"""
-        conn = sqlite3.connect(self.db_path)
-        conn.row_factory = sqlite3.Row
+        conn = self._get_conn(row_factory=True)
         cursor = conn.cursor()
         
         # 构建查询条件
@@ -500,7 +526,7 @@ class DatabaseManager:
     
     def delete_camera_record(self, record_id):
         """删除摄像头检测记录"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         cursor.execute("DELETE FROM camera_records WHERE id = ?", (record_id,))
@@ -514,31 +540,31 @@ class DatabaseManager:
 
 class VideoProcessingApp:
     def __init__(self, host='0.0.0.0', port=None):
+        self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+        self.config = get_app_config(self.BASE_DIR)
         self.app = Flask(__name__)
         # 全局开启跨域，解决前端跨域请求问题
         CORS(self.app, supports_credentials=True)
         # 核心优化2：去掉async_mode='gevent'，解决启动异步模式报错
         self.socketio = SocketIO(self.app, cors_allowed_origins="*", async_mode='threading')
-        self.host = host
+        self.host = host or self.config.host
         try:
-            self.port = int(port if port is not None else os.getenv('PORT', '8080'))
+            self.port = int(port if port is not None else self.config.port)
         except (TypeError, ValueError):
-            self.port = 8080
+            self.port = self.config.port
         
         # 配置JSON响应确保中文正常显示
         self.app.config['JSON_AS_ASCII'] = False
         self.app.config['JSONIFY_MIMETYPE'] = 'application/json;charset=utf-8'
         
-        # 核心锚点：获取Flask项目根目录（所有路径基于此）
-        self.BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         # 创建必要目录（基于Flask项目根目录）
         self.create_directories()
         
         # 初始化数据库管理器 - 传递base_dir参数
-        self.db_manager = DatabaseManager(base_dir=self.BASE_DIR)
+        self.db_manager = DatabaseManager(db_path=self.config.sqlite_db_path, base_dir=self.BASE_DIR)
         
         # 新增：初始化用户管理器
-        self.user_manager = UserManager()
+        self.user_manager = UserManager(db_path=self.config.sqlite_db_path)
         
         # 核心指定：你的weed_best.pt模型路径（固定死，不修改）
         self.weights_root = os.path.join(self.BASE_DIR, "weights")
@@ -646,6 +672,7 @@ class VideoProcessingApp:
         self.app.add_url_rule('/flask/img_records', 'get_img_records', self.get_img_records, methods=['GET'])
         self.app.add_url_rule('/flask/img_records/<int:record_id>', 'delete_img_record', self.delete_img_record, methods=['DELETE'])
         self.app.add_url_rule('/flask/video_records', 'get_video_records', self.get_video_records, methods=['GET'])
+        self.app.add_url_rule('/flask/video_records/<int:record_id>', 'get_video_record', self.get_video_record, methods=['GET'])
         self.app.add_url_rule('/flask/video_records/<int:record_id>', 'delete_video_record', self.delete_video_record, methods=['DELETE'])
         self.app.add_url_rule('/flask/camera_records', 'get_camera_records', self.get_camera_records, methods=['GET'])
         self.app.add_url_rule('/flask/camera_records/<int:record_id>', 'delete_camera_record', self.delete_camera_record, methods=['DELETE'])
@@ -743,7 +770,9 @@ class VideoProcessingApp:
             if not os.path.exists(file_path):
                 return f"文件不存在: {filename}", 404
             
-            return send_from_directory(uploads_dir, filename, as_attachment=False)
+            response = send_from_directory(uploads_dir, filename, as_attachment=False, max_age=3600)
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            return response
         except Exception as e:
             print(f"提供上传文件访问失败: {str(e)}")
             return f"服务错误: {str(e)}", 500
@@ -759,7 +788,9 @@ class VideoProcessingApp:
             if not os.path.exists(file_path):
                 return f"结果文件不存在: {filename}", 404
             
-            return send_from_directory(results_dir, filename, as_attachment=False)
+            response = send_from_directory(results_dir, filename, as_attachment=False, max_age=3600)
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            return response
         except Exception as e:
             print(f"提供结果文件访问失败: {str(e)}")
             return f"服务错误: {str(e)}", 500
@@ -775,7 +806,9 @@ class VideoProcessingApp:
             if not os.path.exists(file_path):
                 return f"运行文件不存在: {filename}", 404
             
-            return send_from_directory(runs_dir, filename, as_attachment=False)
+            response = send_from_directory(runs_dir, filename, as_attachment=False, max_age=3600)
+            response.headers['Cache-Control'] = 'public, max-age=3600'
+            return response
         except Exception as e:
             print(f"提供运行文件访问失败: {str(e)}")
             return f"服务错误: {str(e)}", 500
@@ -922,13 +955,13 @@ class VideoProcessingApp:
         print("="*60)
         print(f"🚀 杂草检测服务启动成功！")
         print(f"✅ 本地访问地址：http://127.0.0.1:{self.port}")
-        print(f"✅ 服务监听地址：http://0.0.0.0:{self.port}")
+        print(f"✅ 服务监听地址：http://{self.host}:{self.port}")
         print(f"📌 加载模型路径：{self.weed_model_path}")
         print(f"📌 项目根目录：{self.BASE_DIR}")
         print("="*60)
         self.socketio.run(
             self.app, 
-            host='0.0.0.0',
+            host=self.host,
             port=self.port, 
             allow_unsafe_werkzeug=True, 
             debug=False,
@@ -941,7 +974,7 @@ class VideoProcessingApp:
         return jsonify({"code":0, "msg":"Flask杂草检测服务正常运行", "model_path":self.weed_model_path, "base_dir":self.BASE_DIR})
     
     def upload_file(self):
-        """文件上传接口（替代原来的SpringBoot上传）"""
+        """文件上传接口"""
         try:
             if 'file' not in request.files:
                 return jsonify({"status": 400, "message": "没有上传文件"}), 400
@@ -1762,6 +1795,29 @@ class VideoProcessingApp:
                 "message": f"获取记录失败: {str(e)}",
                 "records": [],
                 "total": 0
+            })
+
+    def get_video_record(self, record_id):
+        """获取单条视频检测记录"""
+        try:
+            record = self.db_manager.get_video_record_by_id(record_id)
+            if not record:
+                return jsonify({
+                    "code": 404,
+                    "msg": "记录不存在"
+                })
+
+            return jsonify({
+                "code": 0,
+                "msg": "获取成功",
+                "data": record
+            })
+
+        except Exception as e:
+            print(f"获取视频记录详情失败: {e}")
+            return jsonify({
+                "code": 500,
+                "msg": f"获取失败: {str(e)}"
             })
 
     def delete_video_record(self, record_id):

@@ -184,7 +184,7 @@ const initI18nOrSize = (value: string, attr: string) => {
 	state[attr] = Local.get('themeConfig')[value];
 };
 const getTableData = () => {
-	request.get('/api/user/' + userInfos.value.userName).then((res) => {
+	request.get('/flask/user/' + userInfos.value.userName).then((res) => {
 		// console.log(res);
 		if (res.code == 0) {
 			state.img = res.data.avatar;

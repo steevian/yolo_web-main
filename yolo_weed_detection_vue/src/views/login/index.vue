@@ -140,7 +140,7 @@ const submitForm = (formEl: FormInstance | undefined) => {
 	if (!formEl) return;
 	formEl.validate((valid) => {
 		if (valid) {
-			// 【核心修改1】：请求路径从/api/user/login 改为 /flask/login（和后端接口一致）
+			// 登录接口统一走 Flask
 			request.post('/flask/login', ruleForm)
 				.then((res) => {
 					console.log('后端登录响应：', res);

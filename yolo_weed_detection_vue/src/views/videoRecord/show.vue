@@ -66,7 +66,7 @@ const state = reactive({
 });
 
 const getData = () => {
-	request.get('/api/videoRecords/' + state.id).then((res) => {
+	request.get('/flask/video_records/' + state.id).then((res) => {
 		if (res.code == 0) {
 			// res.data = JSON.parse(res.data);
 			state.form = res.data;

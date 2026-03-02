@@ -7,20 +7,26 @@ import os
 import secrets
 import base64
 import time
+from core.database import get_sqlite_conn
 
 class UserManager:
     def __init__(self, db_path='weed_detection.db'):
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        self.db_path = db_path if os.path.isabs(db_path) else os.path.join(base_dir, db_path)
+        configured_db_path = os.getenv('SQLITE_DB_PATH', db_path)
+        self.db_path = configured_db_path if os.path.isabs(configured_db_path) else os.path.join(base_dir, configured_db_path)
+        self.sqlite_timeout = 10.0
         # 使用固定密钥，避免每次启动变化导致token失效
         self.secret_key = "my_very_long_and_secure_jwt_secret_key_1234567890_abcd"
         print(f"JWT 密钥已设置，长度: {len(self.secret_key)}")
         self.init_user_table()
         self.create_default_admin()
+
+    def _get_conn(self, row_factory=False):
+        return get_sqlite_conn(self.db_path, row_factory=row_factory, timeout=self.sqlite_timeout)
     
     def init_user_table(self):
         """初始化用户表"""
-        conn = sqlite3.connect(self.db_path)
+        conn = self._get_conn()
         cursor = conn.cursor()
         
         cursor.execute('''
@@ -46,7 +52,7 @@ class UserManager:
     def create_default_admin(self):
         """创建默认管理员用户（如果不存在）"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_conn()
             cursor = conn.cursor()
             
             cursor.execute('SELECT * FROM users WHERE username = ?', ('admin',))
@@ -87,7 +93,7 @@ class UserManager:
             if len(password) < 3 or len(password) > 20:
                 return {"code": 400, "msg": "密码长度需在3-20个字符之间"}
             
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_conn()
             cursor = conn.cursor()
             
             # 检查用户名是否已存在
@@ -150,8 +156,7 @@ class UserManager:
             if not username or not password:
                 return {"code": 400, "msg": "用户名和密码不能为空"}
             
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = self._get_conn(row_factory=True)
             cursor = conn.cursor()
             
             cursor.execute('''
@@ -227,8 +232,7 @@ class UserManager:
     def get_user_by_id(self, user_id):
         """根据ID获取用户"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = self._get_conn(row_factory=True)
             cursor = conn.cursor()
             
             cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
@@ -247,8 +251,7 @@ class UserManager:
     def get_user_by_username(self, username):
         """根据用户名获取用户"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = self._get_conn(row_factory=True)
             cursor = conn.cursor()
             
             cursor.execute('SELECT * FROM users WHERE username = ?', (username,))
@@ -267,8 +270,7 @@ class UserManager:
     def get_all_users(self, page=1, page_size=10, search=None):
         """获取所有用户（分页）"""
         try:
-            conn = sqlite3.connect(self.db_path)
-            conn.row_factory = sqlite3.Row
+            conn = self._get_conn(row_factory=True)
             cursor = conn.cursor()
             
             # 构建查询条件
@@ -316,7 +318,7 @@ class UserManager:
     def update_user(self, user_id, update_data):
         """更新用户信息"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_conn()
             cursor = conn.cursor()
             
             # 构建更新语句
@@ -343,7 +345,7 @@ class UserManager:
     def delete_user(self, user_id):
         """删除用户"""
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._get_conn()
             cursor = conn.cursor()
             
             cursor.execute('DELETE FROM users WHERE id = ?', (user_id,))
