@@ -109,7 +109,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 			 * 其它设置
 			 */
 			// Tagsview 风格：可选值"<tags-style-one|tags-style-four|tags-style-five>"，默认 tags-style-five
-			// 定义的值与 `/src/layout/navBars/tagsView/tagsView.vue` 中的 class 同名
+			// 定义的值与 `@/components/layout/navBars/tagsView/tagsView.vue` 中的 class 同名
 			tagsStyle: 'tags-style-five',
 			// 主页面切换动画：可选值"<slide-right|slide-left|opacitys>"，默认 slide-right
 			animation: 'slide-right',
@@ -120,7 +120,7 @@ export const useThemeConfig = defineStore('themeConfig', {
 
 			/**
 			 * 布局切换
-			 * 注意：为了演示，切换布局时，颜色会被还原成默认，代码位置：/@/components/layout/navBars/breadcrumb/setings.vue
+			 * 注意：为了演示，切换布局时，颜色会被还原成默认，代码位置：@/components/layout/navBars/breadcrumb/setings.vue
 			 * 中的 `initSetLayoutChange(设置布局切换，重置主题样式)` 方法
 			 */
 			// 布局切换：可选值"<defaults|classic|transverse|columns>"，默认 defaults

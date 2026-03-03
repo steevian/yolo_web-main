@@ -77,7 +77,7 @@ type SysRoleState = {
 };
 
 // 引入弹窗组件
-const RoleDialog = defineAsyncComponent(() => import('./dialog.vue'));
+const RoleDialog = defineAsyncComponent(() => import('@/views/UserCenter/UserManage/dialog.vue'));
 
 // 弹窗组件引用
 const roleDialogRef = ref();

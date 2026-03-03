@@ -1,8 +1,8 @@
 ﻿// main.ts - 恢复原始版本
 import { createApp } from 'vue';
 import pinia from '@/utils/stores/index';
-import App from './App.vue';
-import router from './router';
+import App from '@/App.vue';
+import router from '@/router';
 import { i18n } from '@/utils/i18n/index';
 import other from '@/utils/other';
 import 'animate.css/animate.min.css';

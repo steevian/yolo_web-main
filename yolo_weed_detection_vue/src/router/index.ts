@@ -79,7 +79,7 @@ export function formatTwoStageRoutes(arr: any) {
 			}
 			newArr[0].children.push({ ...v });
 			// 存 name 值，keep-alive 中 include 使用，实现路由的缓存
-			// 路径：/@/components/layout/routerView/parent.vue
+			// 路径：@/components/layout/routerView/parent.vue
 			if (newArr[0].meta.isKeepAlive && v.meta.isKeepAlive) {
 				cacheList.push(v.name);
 				const stores = useKeepALiveNames(pinia);
