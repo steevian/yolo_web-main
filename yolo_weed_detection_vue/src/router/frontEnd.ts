@@ -1,13 +1,13 @@
-import { RouteRecordRaw } from 'vue-router';
+﻿import { RouteRecordRaw } from 'vue-router';
 import { storeToRefs } from 'pinia';
-import { formatTwoStageRoutes, formatFlatteningRoutes, router } from '/@/router/index';
-import { dynamicRoutes, notFoundAndNoPower } from '/@/router/route';
-import pinia from '/@/stores/index';
-import { Session } from '/@/utils/storage';
-import { useUserInfo } from '/@/stores/userInfo';
-import { useTagsViewRoutes } from '/@/stores/tagsViewRoutes';
-import { useRoutesList } from '/@/stores/routesList';
-import { NextLoading } from '/@/utils/loading';
+import { formatTwoStageRoutes, formatFlatteningRoutes, router } from '@/router/index';
+import { dynamicRoutes, notFoundAndNoPower } from '@/router/route';
+import pinia from '@/utils/stores/index';
+import { Session } from '@/utils/storage';
+import { useUserInfo } from '@/utils/stores/userInfo';
+import { useTagsViewRoutes } from '@/utils/stores/tagsViewRoutes';
+import { useRoutesList } from '@/utils/stores/routesList';
+import { NextLoading } from '@/utils/loading';
 
 // 前端控制路由
 
@@ -152,3 +152,4 @@ export function setFilterHasRolesMenu(routes: any, roles: any) {
 	});
 	return menu;
 }
+

@@ -1,5 +1,5 @@
-import { useUserInfo } from '/@/stores/userInfo';
-import { judementSameArr } from '/@/utils/arrayOperation';
+﻿import { useUserInfo } from '@/utils/stores/userInfo';
+import { judementSameArr } from '@/utils/arrayOperation';
 
 /**
  * 单个权限验证
@@ -36,3 +36,4 @@ export function authAll(value: Array<string>): boolean {
 	const stores = useUserInfo();
 	return judementSameArr(value, stores.userInfos.authBtnList);
 }
+

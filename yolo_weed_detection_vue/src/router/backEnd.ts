@@ -1,15 +1,15 @@
-import { RouteRecordRaw } from 'vue-router';
+﻿import { RouteRecordRaw } from 'vue-router';
 import { storeToRefs } from 'pinia';
-import pinia from '/@/stores/index';
-import { useUserInfo } from '/@/stores/userInfo';
-import { useRequestOldRoutes } from '/@/stores/requestOldRoutes';
-import { Session } from '/@/utils/storage';
-import { NextLoading } from '/@/utils/loading';
-import { dynamicRoutes, notFoundAndNoPower } from '/@/router/route';
-import { formatTwoStageRoutes, formatFlatteningRoutes, router } from '/@/router/index';
-import { useRoutesList } from '/@/stores/routesList';
-import { useTagsViewRoutes } from '/@/stores/tagsViewRoutes';
-import { useMenuApi } from '/@/api/menu/index';
+import pinia from '@/utils/stores/index';
+import { useUserInfo } from '@/utils/stores/userInfo';
+import { useRequestOldRoutes } from '@/utils/stores/requestOldRoutes';
+import { Session } from '@/utils/storage';
+import { NextLoading } from '@/utils/loading';
+import { dynamicRoutes, notFoundAndNoPower } from '@/router/route';
+import { formatTwoStageRoutes, formatFlatteningRoutes, router } from '@/router/index';
+import { useRoutesList } from '@/utils/stores/routesList';
+import { useTagsViewRoutes } from '@/utils/stores/tagsViewRoutes';
+import { useMenuApi } from '@/api/menu/index';
 
 // 后端控制路由
 
@@ -161,3 +161,4 @@ export function dynamicImport(dynamicViewsModules: Record<string, Function>, com
 		return false;
 	}
 }
+

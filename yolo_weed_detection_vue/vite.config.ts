@@ -9,10 +9,9 @@ const pathResolve = (dir: string) => {
   return resolve(__dirname, '.', dir);
 };
 
-// 别名配置
+// 别名配置（仅保留核心 @ -> src）
 const alias: Record<string, string> = {
-  '/@': pathResolve('./src/'),
-  'vue-i18n': 'vue-i18n/dist/vue-i18n.cjs.js',
+  '@': pathResolve('./src'),
 };
 
 const viteConfig = defineConfig((mode: ConfigEnv) => {

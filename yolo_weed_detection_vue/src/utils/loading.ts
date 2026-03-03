@@ -1,5 +1,5 @@
-import { nextTick } from 'vue';
-import '/@/theme/loading.scss';
+﻿import { nextTick } from 'vue';
+import '@/styles/loading.scss';
 
 /**
  * 页面全局 Loading
@@ -42,3 +42,4 @@ export const NextLoading = {
 		});
 	},
 };
+

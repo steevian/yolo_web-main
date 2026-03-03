@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div class="login-container">
 		<div class="bg-bubbles">
 			<li v-for="n in 10" :key="n"></li>
@@ -40,16 +40,16 @@ import { ElMessage } from 'element-plus';
 import { useI18n } from 'vue-i18n';
 import Cookies from 'js-cookie';
 import { storeToRefs } from 'pinia';
-import { useThemeConfig } from '/@/stores/themeConfig';
+import { useThemeConfig } from '@/utils/stores/themeConfig';
 // 引入用户信息Pinia
-import { useUserInfo } from '/@/stores/userInfo';
-import { initFrontEndControlRoutes } from '/@/router/frontEnd';
-import { initBackEndControlRoutes } from '/@/router/backEnd';
-import { Session } from '/@/utils/storage';
-import { formatAxis } from '/@/utils/formatTime';
-import { NextLoading } from '/@/utils/loading';
+import { useUserInfo } from '@/utils/stores/userInfo';
+import { initFrontEndControlRoutes } from '@/router/frontEnd';
+import { initBackEndControlRoutes } from '@/router/backEnd';
+import { Session } from '@/utils/storage';
+import { formatAxis } from '@/utils/formatTime';
+import { NextLoading } from '@/utils/loading';
 import type { FormInstance, FormRules } from 'element-plus';
-import request from '/@/utils/request';
+import request from '@/utils/request';
 
 // 定义变量内容
 const { t } = useI18n();

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div class="error layout-padding">
 		<div class="layout-padding-auto layout-padding-view">
 			<div class="error-flex">
@@ -23,7 +23,7 @@
 </template>
 
 <script setup lang="ts" name="noPower">
-import { Session } from '/@/utils/storage';
+import { Session } from '@/utils/storage';
 
 const onSetAuth = () => {
 	// https://gitee.com/lyt-top/vue-next-admin/issues/I5C3JS
@@ -89,3 +89,4 @@ const onSetAuth = () => {
 	}
 }
 </style>
+

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
 	<div class="login-container">
 		<div class="bg-bubbles">
 			<li v-for="n in 10" :key="n"></li>
@@ -40,7 +40,7 @@ import { reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus';
 import type { FormInstance, FormRules } from 'element-plus';
-import request from '/@/utils/request';
+import request from '@/utils/request';
 
 const router = useRouter();
 const ruleFormRef = ref<FormInstance>();
@@ -376,3 +376,4 @@ const submitForm = (formEl: FormInstance | undefined) => {
 	}
 }
 </style>
+

@@ -1,4 +1,4 @@
-import { RouteRecordRaw } from 'vue-router';
+﻿import { RouteRecordRaw } from 'vue-router';
 
 /**
  * 建议：路由 path 路径与文件夹名称相同，找文件可浏览器地址找，方便定位文件位置
@@ -41,7 +41,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 	{
 		path: '/',
 		name: '/',
-		component: () => import('/@/layout/index.vue'),
+		component: () => import('@/components/layout/index.vue'),
 		redirect: '/imgPredict', // 根路径重定向到图片检测，直接进入核心功能
 		meta: {
 			isKeepAlive: true,
@@ -50,7 +50,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/imgPredict',
 				name: 'imgPredict',
-				component: () => import('/@/views/imgPredict/index.vue'),
+				component: () => import('@/views/Detect/Image/index.vue'),
 				meta: {
 					title: '图像检测',
 					isLink: '',
@@ -65,7 +65,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/videoPredict',
 				name: 'videoPredict',
-				component: () => import('/@/views/videoPredict/index.vue'),
+				component: () => import('@/views/Detect/Video/index.vue'),
 				meta: {
 					title: '视频检测',
 					isLink: '',
@@ -81,7 +81,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 				path: '/cameraPredict',
 				name: 'cameraPredict',
 				// 统一组件导入风格（与其他路由保持一致），避免 .then(m => m.default) 潜在问题
-				component: () => import('/@/views/cameraPredict/index.vue'),
+				component: () => import('@/views/Detect/Camera/index.vue'),
 				meta: {
 					title: '摄像检测',
 					isLink: '',
@@ -96,7 +96,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/imgRecord',
 				name: 'imgRecord',
-				component: () => import('/@/views/imgRecord/index.vue'),
+				component: () => import('@/views/History/Image/index.vue'),
 				meta: {
 					title: '图片识别记录',
 					isLink: '',
@@ -111,7 +111,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/videoRecord',
 				name: 'videoRecord',
-				component: () => import('/@/views/videoRecord/index.vue'),
+				component: () => import('@/views/History/Video/index.vue'),
 				meta: {
 					title: '视频识别记录',
 					isLink: '',
@@ -126,7 +126,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/cameraRecord',
 				name: 'cameraRecord',
-				component: () => import('/@/views/cameraRecord/index.vue'),
+				component: () => import('@/views/History/Camera/index.vue'),
 				meta: {
 					title: '摄像识别记录',
 					isLink: '',
@@ -141,7 +141,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/usermanage',
 				name: 'usermanage',
-				component: () => import('/@/views/userManage/index.vue'),
+				component: () => import('@/views/UserCenter/UserManage/index.vue'),
 				meta: {
 					title: '用户管理',
 					isLink: '',
@@ -156,7 +156,7 @@ export const dynamicRoutes: Array<RouteRecordRaw> = [
 			{
 				path: '/personal',
 				name: 'personal',
-				component: () => import('/@/views/personal/index.vue'),
+				component: () => import('@/views/UserCenter/Profile/index.vue'),
 				meta: {
 					title: '个人中心',
 					isLink: '',
@@ -180,7 +180,7 @@ export const notFoundAndNoPower = [
 	{
 		path: '/:path(.*)*',
 		name: 'notFound',
-		component: () => import('/@/views/error/404.vue'),
+		component: () => import('@/views/Error/404.vue'),
 		meta: {
 			title: 'message.staticRoutes.notFound',
 			isHide: true,
@@ -189,7 +189,7 @@ export const notFoundAndNoPower = [
 	{
 		path: '/401',
 		name: 'noPower',
-		component: () => import('/@/views/error/401.vue'),
+		component: () => import('@/views/Error/401.vue'),
 		meta: {
 			title: 'message.staticRoutes.noPower',
 			isHide: true,
@@ -207,7 +207,7 @@ export const staticRoutes: Array<RouteRecordRaw> = [
 	{
 		path: '/login',
 		name: 'login',
-		component: () => import('/@/views/login/index.vue'),
+		component: () => import('@/views/Login/index.vue'),
 		meta: {
 			title: '登录',
 		},
@@ -216,7 +216,7 @@ export const staticRoutes: Array<RouteRecordRaw> = [
 	{
 		path: '/register',
 		name: 'register',
-		component: () => import('/@/views/login/register.vue'),
+		component: () => import('@/views/Login/register.vue'),
 		meta: {
 			title: '注册',
 		},
@@ -225,7 +225,7 @@ export const staticRoutes: Array<RouteRecordRaw> = [
 	{
 		path: '/videoShow',
 		name: 'videoShow',
-		component: () => import('/@/views/videoRecord/show.vue'),
+		component: () => import('@/views/History/Video/show.vue'),
 		meta: {
 			title: '记录查看',
 		},

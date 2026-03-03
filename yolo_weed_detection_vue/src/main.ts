@@ -1,18 +1,18 @@
-// main.ts - 恢复原始版本
+﻿// main.ts - 恢复原始版本
 import { createApp } from 'vue';
-import pinia from '/@/stores/index';
+import pinia from '@/utils/stores/index';
 import App from './App.vue';
 import router from './router';
-import { i18n } from '/@/i18n/index';
-import other from '/@/utils/other';
+import { i18n } from '@/utils/i18n/index';
+import other from '@/utils/other';
 import 'animate.css/animate.min.css';
 
 import ElementPlus from 'element-plus';
 import 'element-plus/dist/index.css';
-import '/@/theme/index.scss';
+import '@/styles/index.scss';
 import VueGridLayout from 'vue-grid-layout';
 import * as ElementPlusIconsVue from '@element-plus/icons-vue';
-import '/@/theme/fonts/iconfont.css'
+import '@/styles/fonts/iconfont.css'
 
 const app = createApp(App);
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
