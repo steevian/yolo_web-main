@@ -1,71 +1,71 @@
 ﻿<template>
 	<div class="system-predict-container layout-padding">
 		<div class="system-predict-padding layout-padding-auto layout-padding-view">
-			<div class="header">
-				<div class="conf" style="display: flex; flex-direction: row; align-items: center;">
-					<div
-						style="font-size: 14px;margin-right: 20px;display: flex;justify-content: start;align-items: center;color: #909399;">
-						设置最小置信度阈值
-					</div>
-					<el-slider v-model="conf" :format-tooltip="formatTooltip" style="width: 300px;" 
-					  :min="0" :max="100" :step="1" />
-				</div>
-				<div class="button-section" style="margin-left: 20px">
-					<el-button type="primary" @click="upData" class="predict-button" :disabled="state.isDetecting">
-						{{ state.isDetecting ? '正在检测中' : '开始杂草检测' }}
-					</el-button>
+			<div class="detect-title-row">
+				<div>
+					<h3 class="detect-title">图像检测</h3>
+					<p class="detect-subtitle">上传图片后执行 YOLOv11 检测，结果与检测框实时展示</p>
 				</div>
 			</div>
-			<el-card shadow="hover" class="card">
-				<!-- 核心修改：添加图片容器，支持检测框绘制 -->
+
+			<el-card shadow="never" class="action-card">
+				<div class="action-row">
+					<div class="conf">
+						<div class="conf-label">设置最小置信度阈值</div>
+						<el-slider v-model="conf" :format-tooltip="formatTooltip" class="conf-slider" :min="0" :max="100" :step="1" />
+					</div>
+					<div class="button-section">
+						<el-button type="primary" @click="upData" class="predict-button" :disabled="state.isDetecting">
+							{{ state.isDetecting ? '正在检测中' : '开始杂草检测' }}
+						</el-button>
+					</div>
+				</div>
+			</el-card>
+
+			<el-card shadow="never" class="card preview-card">
 				<div class="img-container" ref="imgContainer">
-					<!-- 原图或检测结果图 -->
-					<img 
-						:src="currentImageUrl" 
-						class="avatar" 
-						alt="检测图片"
-						ref="imageRef"
-						@load="onImageLoad"
-						v-show="currentImageUrl"
-					/>
-					<!-- 检测框画布 -->
-					<canvas 
-						ref="canvasRef" 
-						class="detection-canvas"
-						v-show="currentImageUrl"
-					></canvas>
-					
-					<!-- 上传区域（没有图片时显示） -->
-					<el-upload 
+					<img :src="currentImageUrl" class="avatar" alt="检测图片" ref="imageRef" @load="onImageLoad" v-show="currentImageUrl" />
+					<canvas ref="canvasRef" class="detection-canvas" v-show="currentImageUrl"></canvas>
+
+					<el-upload
 						v-if="!currentImageUrl"
-						v-model="state.img" 
-						ref="uploadFile" 
+						v-model="state.img"
+						ref="uploadFile"
 						class="avatar-uploader"
-						:action="uploadAction" 
-						:show-file-list="false" 
+						:action="uploadAction"
+						:show-file-list="false"
 						:on-success="handleAvatarSuccessone"
 						:before-upload="beforeUpload"
 					>
-						<el-icon class="avatar-uploader-icon">
-							<Plus />
-						</el-icon>
+						<div class="upload-panel">
+							<el-icon class="avatar-uploader-icon">
+								<Plus />
+							</el-icon>
+							<div class="upload-title">点击上传杂草图片</div>
+							<div class="upload-note">支持 JPG / PNG，单张 ≤ 5MB</div>
+						</div>
 					</el-upload>
 				</div>
 			</el-card>
-			
-			<!-- 检测结果信息 -->
-			<el-card class="result-section" v-if="state.predictionResult.label || detections.length > 0">
+
+			<el-card class="result-section" shadow="never" v-if="state.predictionResult.label || detections.length > 0">
 				<div class="bottom">
-					<div style="width: 33%">识别结果：{{ state.predictionResult.label || '未识别' }}</div>
-					<div style="width: 33%">预测概率：{{ state.predictionResult.confidence || '0%' }}</div>
-					<div style="width: 33%">总时间：{{ state.predictionResult.allTime || '0秒' }}</div>
-				</div>
-				
-				<!-- 检测框详细信息 -->
-				<div class="detections-detail" v-if="detections.length > 0">
-					<div class="detection-count" style="margin-top: 15px; font-weight: bold;">
-						共检测到 {{ detections.length }} 个目标：
+					<div class="metric-item">
+						<div class="metric-label">识别结果</div>
+						<div class="metric-value">{{ state.predictionResult.label || '未识别' }}</div>
 					</div>
+					<div class="metric-item">
+						<div class="metric-label">预测概率</div>
+						<div class="metric-value">{{ state.predictionResult.confidence || '0%' }}</div>
+					</div>
+					<div class="metric-item">
+						<div class="metric-label">总时间</div>
+						<div class="metric-value">{{ state.predictionResult.allTime || '0秒' }}</div>
+					</div>
+				</div>
+
+				<div class="detections-detail" v-if="detections.length > 0">
+					<div class="detection-count">共检测到 {{ detections.length }} 个目标</div>
 					<el-table :data="detections" style="width: 100%; margin-top: 10px;" size="small">
 						<el-table-column prop="weed_name" label="杂草名称" width="120"></el-table-column>
 						<el-table-column prop="confidence" label="置信度" width="100">
@@ -81,8 +81,8 @@
 						</el-table-column>
 						<el-table-column label="操作" width="100">
 							<template #default="{ row, $index }">
-								<el-button 
-									size="small" 
+								<el-button
+									size="small"
 									@click="highlightDetection($index)"
 									:type="highlightedIndex === $index ? 'primary' : 'default'"
 								>
@@ -522,41 +522,88 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .system-predict-container {
 	width: 100%;
-	height: 100vh;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
 
 	.system-predict-padding {
-		padding: 15px;
+		padding: 16px;
 		height: 100%;
 		display: flex;
 		flex-direction: column;
+		gap: 12px;
+		overflow: auto;
 	}
 }
 
-.header {
+.detect-title-row {
 	width: 100%;
 	display: flex;
-	justify-content: start;
 	align-items: center;
-	font-size: 20px;
+}
+
+.detect-title {
+	font-size: 24px;
+	line-height: 1.25;
+	font-weight: 700;
+	color: var(--app-text-1, #111827);
+}
+
+.detect-subtitle {
+	margin-top: 6px;
+	font-size: 13px;
+	color: var(--app-text-2, #6b7280);
+}
+
+.action-card {
+	border-radius: 14px;
+	border: 1px solid var(--el-border-color-light);
+	box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
+}
+
+.action-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 16px;
 	flex-wrap: wrap;
-	gap: 15px;
-	padding-bottom: 10px;
-	border-bottom: 1px solid #e5e7eb;
-	margin-bottom: 15px;
+}
+
+.conf {
+	flex: 1;
+	min-width: 260px;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+}
+
+.conf-label {
+	font-size: 14px;
+	font-weight: 600;
+	color: #4b5563;
+}
+
+.conf-slider {
+	max-width: 360px;
+	width: 100%;
 }
 
 .card {
 	width: 100%;
 	flex: 1;
-	border-radius: 10px;
+	border-radius: 14px;
 	margin-top: 0;
 	display: flex;
 	justify-content: center;
 	align-items: center;
-	padding: 20px;
-	background: radial-gradient(circle, #d3e3f1 0%, #ffffff 100%);
+	padding: 16px;
+	border: 1px solid var(--el-border-color-light);
+	box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
+	background: linear-gradient(180deg, #fcfcfd 0%, #f8fafc 100%);
+}
+
+.preview-card {
+	min-height: 420px;
 }
 
 // 图片容器
@@ -572,16 +619,52 @@ onUnmounted(() => {
 .avatar-uploader {
 	width: 100%;
 	height: 100%;
+
+	:deep(.el-upload) {
+		width: 100%;
+		height: 100%;
+	}
+}
+
+.upload-panel {
+	width: 100%;
+	height: 100%;
+	min-height: 320px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 8px;
+	border: 2px dashed #d1d5db;
+	border-radius: 12px;
+	background: #ffffff;
+	transition: all 0.2s ease;
+
+	&:hover {
+		border-color: #a5b4fc;
+		background: #f8faff;
+	}
+}
+
+.upload-title {
+	font-size: 15px;
+	font-weight: 600;
+	color: #111827;
+}
+
+.upload-note {
+	font-size: 12px;
+	color: #6b7280;
 }
 
 .avatar {
 	width: 100%;
-	max-height: 70vh;
+	max-height: 58vh;
 	height: auto;
 	display: block;
 	object-fit: contain;
-	border-radius: 6px;
-	box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+	border-radius: 10px;
+	box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
 }
 
 // 检测框画布
@@ -591,63 +674,81 @@ onUnmounted(() => {
 	left: 0;
 	width: 100%;
 	height: 100%;
-	pointer-events: none; /* 允许点击穿透到图片 */
+	pointer-events: none;
 }
 
 .el-icon.avatar-uploader-icon {
-	font-size: 28px;
-	color: #8c939d;
-	width: 100%;
-	height: 600px;
-	text-align: center;
-	line-height: 600px;
+	font-size: 32px;
+	color: #6b7280;
 }
 
 .button-section {
 	display: flex;
 	justify-content: center;
-	min-width: 200px;
+	min-width: 180px;
 }
 
 .predict-button {
 	width: 100%;
+	height: 40px;
+	border-radius: 12px;
 }
 
 .result-section {
 	width: 100%;
-	margin-top: 15px;
-	text-align: center;
-	border-radius: 6px;
-	padding: 20px 0;
-	background: radial-gradient(circle, #d3e3f1 0%, #ffffff 100%);
+	text-align: left;
+	border-radius: 14px;
+	padding: 10px;
+	border: 1px solid var(--el-border-color-light);
+	box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
 }
 
 .bottom {
 	width: 100%;
-	font-size: 18px;
-	display: flex;
-	flex-direction: row;
-	justify-content: center;
-	align-items: center;
-	gap: 40px;
-	flex-wrap: wrap;
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	gap: 10px;
+}
+
+.metric-item {
+	padding: 12px 14px;
+	border-radius: 10px;
+	background: #f8fafc;
+	border: 1px solid #e5e7eb;
+}
+
+.metric-label {
+	font-size: 12px;
+	color: #6b7280;
+}
+
+.metric-value {
+	margin-top: 5px;
+	font-size: 15px;
+	font-weight: 700;
+	color: #111827;
 }
 
 // 检测框详情区域
 .detections-detail {
 	margin-top: 15px;
-	padding: 0 20px;
+	padding: 0 4px;
 	
 	.detection-count {
-		font-size: 16px;
-		color: #409eff;
+		font-size: 14px;
+		font-weight: 700;
+		color: #4338ca;
 		text-align: left;
 		margin-bottom: 10px;
 	}
 	
 	:deep(.el-table) {
+		border-radius: 10px;
+		overflow: hidden;
+		border: 1px solid #e5e7eb;
+
 		.el-table__row:hover {
-			background-color: #f5f7fa;
+			background-color: #eef2ff;
 			cursor: pointer;
 		}
 	}
@@ -655,24 +756,39 @@ onUnmounted(() => {
 
 // 响应式适配
 @media (max-width: 1000px) {
-	.header {
+	.action-row {
 		gap: 10px;
 	}
+
+	.conf {
+		min-width: unset;
+		width: 100%;
+		flex-wrap: wrap;
+	}
+
+	.conf-slider {
+		max-width: 100%;
+	}
+
 	.button-section {
-		margin-left: 0 !important;
 		width: 100%;
 		min-width: unset;
 	}
-	.bottom {
-		gap: 20px;
+
+	.predict-button {
+		width: 100%;
 	}
-	.bottom > div {
-		width: 100% !important;
-		margin: 5px 0;
+
+	.preview-card {
+		min-height: 320px;
+	}
+
+	.bottom {
+		grid-template-columns: 1fr;
 	}
 	
 	.detections-detail {
-		padding: 0 10px;
+		padding: 0;
 	}
 }
 </style>

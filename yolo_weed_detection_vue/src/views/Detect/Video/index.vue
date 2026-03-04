@@ -1,45 +1,60 @@
 ﻿<template>
 	<div class="system-predict-container layout-padding">
 		<div class="system-predict-padding layout-padding-auto layout-padding-view">
-			<div class="header">
-				<div class="conf" style="display: flex; flex-direction: row; align-items: center;">
-					<div
-						style="font-size: 14px;margin-right: 20px;display: flex;justify-content: start;align-items: center;color: #909399;">
-						设置最小置信度阈值
-					</div>
-					<el-slider v-model="conf" :format-tooltip="formatTooltip" style="width: 280px;" 
-					  :min="0" :max="100" :step="1" />
+			<div class="detect-title-row">
+				<div>
+					<h3 class="detect-title">视频检测</h3>
+					<p class="detect-subtitle">上传视频后执行 YOLOv11 检测，实时查看进度与检测结果</p>
 				</div>
-				<el-upload v-model="state.form.inputVideo" ref="uploadFile" class="avatar-uploader"
-					:action="uploadAction" :show-file-list="false" :on-success="handleAvatarSuccessone"
-					:disabled="state.isDetecting" :before-upload="beforeUpload">
-					<div class="button-section" style="margin-left: 20px">
-						<el-button type="info" class="predict-button" :disabled="state.isDetecting">上传杂草检测视频</el-button>
+			</div>
+
+			<el-card shadow="never" class="action-card">
+				<div class="action-row">
+					<div class="conf">
+						<div class="conf-label">设置最小置信度阈值</div>
+						<el-slider v-model="conf" :format-tooltip="formatTooltip" class="conf-slider" :min="0" :max="100" :step="1" />
 					</div>
-				</el-upload>
-				<div class="button-section" style="margin-left: 20px">
-					<el-button type="primary" @click="upData" class="predict-button" :disabled="!state.form.inputVideo || state.isDetecting">
-						{{ state.isDetecting ? '正在检测中' : '开始杂草检测' }}
-					</el-button>
+
+					<el-upload
+						v-model="state.form.inputVideo"
+						ref="uploadFile"
+						class="uploader-inline"
+						:action="uploadAction"
+						:show-file-list="false"
+						:on-success="handleAvatarSuccessone"
+						:disabled="state.isDetecting"
+						:before-upload="beforeUpload"
+					>
+						<div class="button-section">
+							<el-button type="info" class="predict-button" :disabled="state.isDetecting">上传杂草检测视频</el-button>
+						</div>
+					</el-upload>
+
+					<div class="button-section">
+						<el-button type="primary" @click="upData" class="predict-button" :disabled="!state.form.inputVideo || state.isDetecting">
+							{{ state.isDetecting ? '正在检测中' : '开始杂草检测' }}
+						</el-button>
+					</div>
 				</div>
+
 				<div class="demo-progress" v-if="state.isShow">
-					<el-progress :text-inside="true" :stroke-width="20" :percentage="state.percentage" style="width: 380px;">
+					<el-progress :text-inside="true" :stroke-width="18" :percentage="state.percentage">
 						<span>{{ state.type_text }} {{ state.percentage }}%</span>
 					</el-progress>
 				</div>
-			</div>
-			<div class="cards" ref="cardsContainer">
-				<!-- 关键修改1：调整视频播放器显示逻辑 -->
+			</el-card>
+
+			<el-card shadow="never" class="cards" ref="cardsContainer">
 				<template v-if="state.video_path">
-					<video 
+					<video
 						v-show="isVideoActive"
 						ref="videoPlayer"
-						class="video" 
-						:src="state.video_path" 
-						controls 
-						autoplay 
-						muted 
-						loop 
+						class="video"
+						:src="state.video_path"
+						controls
+						autoplay
+						muted
+						loop
 						alt="杂草检测视频结果"
 						@loadedmetadata="onVideoLoaded"
 						@error="onVideoError"
@@ -53,19 +68,11 @@
 				<div v-else class="empty-tip">
 					<el-icon class="empty-icon"><VideoCamera /></el-icon>
 					<div>请上传视频并点击「开始杂草检测」查看结果</div>
-					<div class="empty-sub">支持MP4、AVI等常见视频格式</div>
+					<div class="empty-sub">支持 MP4、AVI、MOV、MKV 等常见视频格式</div>
 				</div>
-			</div>
-			
-			<el-alert
-				v-if="statusMessage"
-				:title="statusMessage"
-				:type="statusType"
-				show-icon
-				closable
-				@close="statusMessage = ''"
-				style="margin-top: 15px;"
-			/>
+			</el-card>
+
+			<el-alert v-if="statusMessage" :title="statusMessage" :type="statusType" show-icon closable @close="statusMessage = ''" class="status-alert" />
 			
 			<!-- 调试信息面板（仅在开发环境显示） -->
 			<div v-if="showDebugInfo" class="debug-panel">
@@ -553,87 +560,129 @@ onMounted(async () => {
 <style scoped lang="scss">
 .system-predict-container {
 	width: 100%;
-	height: 100vh;
+	height: 100%;
 	display: flex;
 	flex-direction: column;
-	background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
 
 	.system-predict-padding {
-		padding: 15px;
+		padding: 16px;
 		height: 100%;
 		display: flex;
 		flex-direction: column;
+		gap: 12px;
+		overflow: auto;
 	}
 }
 
-.header {
+.detect-title-row {
 	width: 100%;
 	display: flex;
-	justify-content: start;
 	align-items: center;
-	font-size: 20px;
+}
+
+.detect-title {
+	font-size: 24px;
+	line-height: 1.25;
+	font-weight: 700;
+	color: var(--app-text-1, #111827);
+}
+
+.detect-subtitle {
+	margin-top: 6px;
+	font-size: 13px;
+	color: var(--app-text-2, #6b7280);
+}
+
+.action-card {
+	border-radius: 14px;
+	border: 1px solid var(--el-border-color-light);
+	box-shadow: 0 8px 24px rgba(17, 24, 39, 0.06);
+}
+
+.action-row {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
 	flex-wrap: wrap;
-	gap: 15px;
-	padding-bottom: 15px;
-	border-bottom: 2px solid #e5e7eb;
-	margin-bottom: 20px;
-	background: white;
-	padding: 15px;
-	border-radius: 10px;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.conf {
+	flex: 1;
+	min-width: 260px;
+	display: flex;
+	align-items: center;
+	gap: 14px;
+}
+
+.conf-label {
+	font-size: 14px;
+	font-weight: 600;
+	color: #4b5563;
+}
+
+.conf-slider {
+	max-width: 340px;
+	width: 100%;
+}
+
+.uploader-inline {
+	:deep(.el-upload) {
+		display: block;
+	}
 }
 
 .cards {
 	width: 100%;
 	flex: 1;
-	border-radius: 12px;
-	margin-top: 15px;
-	padding: 20px;
+	border-radius: 14px;
+	padding: 16px;
 	overflow: hidden;
 	display: flex;
 	justify-content: center;
 	align-items: center;
-	background: white;
+	background: linear-gradient(180deg, #fcfcfd 0%, #f8fafc 100%);
+	border: 1px solid var(--el-border-color-light);
 	position: relative;
-	min-height: 500px;
-	box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+	min-height: 420px;
+	box-shadow: 0 10px 28px rgba(17, 24, 39, 0.06);
 
 	.empty-tip {
-		color: #606266;
-		font-size: 18px;
+		color: #4b5563;
+		font-size: 16px;
 		text-align: center;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 15px;
+		gap: 10px;
 		
 		.empty-icon {
-			font-size: 64px;
+			font-size: 54px;
 			color: #c0c4cc;
-			margin-bottom: 10px;
+			margin-bottom: 8px;
 		}
 		
 		.empty-sub {
-			font-size: 14px;
+			font-size: 13px;
 			color: #909399;
-			margin-top: 5px;
+			margin-top: 2px;
 		}
 	}
 	
 	.loading-tip {
-		color: #606266;
+		color: #4b5563;
 		font-size: 18px;
 		text-align: center;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 15px;
+		gap: 12px;
 		
 		.loading-icon {
 			font-size: 48px;
-			color: #409eff;
+			color: #6366f1;
 			animation: rotate 2s linear infinite;
-			margin-bottom: 10px;
+			margin-bottom: 6px;
 		}
 		
 		@keyframes rotate {
@@ -645,30 +694,30 @@ onMounted(async () => {
 
 .video {
 	width: 100%;
-	max-height: 75vh;
+	max-height: 58vh;
 	height: auto;
 	object-fit: contain;
-	border-radius: 8px;
-	box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-	border: 2px solid #409eff;
+	border-radius: 10px;
+	box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+	border: 1px solid #dbeafe;
 	background: #000;
 }
 
 .button-section {
 	display: flex;
 	justify-content: center;
-	min-width: 180px;
+	min-width: 170px;
 	
 	.predict-button {
 		width: 100%;
-		padding: 10px 20px;
+		height: 40px;
 		font-size: 14px;
-		border-radius: 6px;
+		border-radius: 12px;
 		transition: all 0.3s ease;
 		
 		&:hover {
-			transform: translateY(-2px);
-			box-shadow: 0 4px 12px rgba(64, 158, 255, 0.3);
+			transform: translateY(-1px);
+			box-shadow: 0 6px 12px rgba(99, 102, 241, 0.22);
 		}
 		
 		&:disabled {
@@ -681,19 +730,23 @@ onMounted(async () => {
 }
 
 .demo-progress {
-	min-width: 300px;
-	background: white;
-	padding: 10px;
-	border-radius: 6px;
-	box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+	width: 100%;
+	background: #f8fafc;
+	padding: 10px 12px;
+	border-radius: 10px;
+	border: 1px solid #e5e7eb;
+}
+
+.status-alert {
+	margin-top: 2px;
 }
 
 .debug-panel {
-	margin-top: 20px;
+	margin-top: 8px;
 	padding: 15px;
-	background: white;
+	background: #fff;
 	border-radius: 8px;
-	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+	box-shadow: 0 4px 12px rgba(17, 24, 39, 0.08);
 	
 	.debug-content {
 		p {
@@ -705,71 +758,68 @@ onMounted(async () => {
 
 // 响应式适配优化
 @media (max-width: 1400px) {
-	.header {
+	.action-row {
 		gap: 12px;
 	}
+
+	.conf {
+		min-width: unset;
+		width: 100%;
+		flex-wrap: wrap;
+	}
+
+	.conf-slider {
+		max-width: 100%;
+	}
+
 	.demo-progress {
 		width: 100%;
-		margin-left: 0 !important;
-		min-width: unset;
 	}
 	.button-section {
-		min-width: 160px;
+		min-width: 150px;
 	}
 }
 
 @media (max-width: 992px) {
-	.header {
-		flex-direction: column;
-		align-items: stretch;
+	.action-row {
 		gap: 15px;
-	}
-	
-	.conf {
-		width: 100%;
-		justify-content: space-between;
-	}
-	
-	.el-slider {
-		width: 100% !important;
 	}
 	
 	.button-section {
 		width: 100%;
-		margin-left: 0 !important;
 		min-width: unset;
 	}
 	
 	.cards {
-		min-height: 400px;
+		min-height: 360px;
 		padding: 15px;
 	}
 	
 	.video {
-		max-height: 65vh;
+		max-height: 54vh;
 	}
 }
 
 @media (max-width: 768px) {
-	.system-predict-padding {
+	:deep(.system-predict-padding) {
 		padding: 10px;
 	}
 	
 	.cards {
-		min-height: 350px;
+		min-height: 300px;
 		padding: 10px;
 		
 		.empty-tip {
-			font-size: 16px;
+			font-size: 14px;
 			
 			.empty-icon {
-				font-size: 48px;
+				font-size: 42px;
 			}
 		}
 	}
 	
 	.video {
-		max-height: 60vh;
+		max-height: 50vh;
 	}
 }
 </style>
