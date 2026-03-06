@@ -133,7 +133,7 @@ const uploadAction = ref('/flask/upload');
 const state = reactive({
 	img: '', // 上传图片的后端标识
 	predictionResult: { label: '', confidence: '', allTime: '' },
-	form: { username: '', inputImg: null, conf: null, startTime: '' },
+	form: { username: '', inputImg: '', conf: 0, startTime: '' }, // inputImg: string, conf: number
 	isDetecting: false, // 检测状态锁，防止重复请求
 });
 
@@ -319,6 +319,7 @@ const highlightDetection = (index: number) => {
 };
 
 // 开始杂草检测
+
 const upData = async () => {
 	// 多重校验：防重复请求、防无图、防非法置信度
 	if (state.isDetecting) return ElMessage.warning('正在检测中，请勿重复点击！');
@@ -327,9 +328,9 @@ const upData = async () => {
 
 	// 组装参数：修复类型为Number，适配后端接收
 	state.isDetecting = true;
-	state.form.conf = conf.value / 100; // 直接传Number，无需转字符串
+	state.form.conf = conf.value / 100; // number
 	state.form.username = userInfos.value.userName || 'default_user';
-	state.form.inputImg = state.img;
+	state.form.inputImg = state.img; // string
 	state.form.startTime = formatDate(new Date(), 'YYYY-MM-DD HH:mm:ss'); // 修复时间格式符
 
 	try {
@@ -481,35 +482,42 @@ const checkFlaskConnection = async () => {
     });
     if (response.ok) {
       console.log('Flask服务正常（代理转发成功）');
-      // 直接定位页面顶部的提示元素（根据页面结构）
-      const tipElement = document.querySelector('.system-predict-container .NOT-FOUND');
-      if (tipElement) {
-        tipElement.style.display = 'none'; // 强制隐藏
-      }
+			// 直接定位页面顶部的提示元素（根据页面结构）
+			const tipElement = document.querySelector('.system-predict-container .NOT-FOUND');
+			if (tipElement && tipElement instanceof HTMLElement) {
+				tipElement.style.display = 'none'; // 强制隐藏
+			}
     }
   } catch (error) {
     ElMessage.warning('Flask服务未启动或代理配置错误！');
   }
 };
 
-// 页面挂载初始化（原有逻辑不变，仅适配代理）
+
+// 保证置信度滑块和state.form.conf实时同步
+import { watch } from 'vue';
+
 onMounted(() => {
-  // 优先检查Flask服务（走代理）
-  checkFlaskConnection();
-  
-  // 原有逻辑
-  state.form.conf = conf.value / 100;
-  
-  // 监听窗口大小变化，重新绘制检测框
-  window.addEventListener('resize', drawDetections);
-  
-  // 确保页面加载时清理旧状态
-  cleanupAllResources();
-  
-  // 预加载用户信息
-  if (stores && userInfos.value.userName) {
-    state.form.username = userInfos.value.userName;
-  }
+	// 优先检查Flask服务（走代理）
+	checkFlaskConnection();
+
+	// 监听窗口大小变化，重新绘制检测框
+	window.addEventListener('resize', drawDetections);
+
+	// 确保页面加载时清理旧状态
+	cleanupAllResources();
+
+	// 预加载用户信息
+	if (stores && userInfos.value.userName) {
+		state.form.username = userInfos.value.userName;
+	}
+	// 初始化置信度
+	state.form.conf = conf.value / 100;
+});
+
+// 保证置信度滑块和state.form.conf实时同步
+watch(conf, (val) => {
+	state.form.conf = val / 100;
 });
 
 // 组件卸载前清理（原有逻辑不变）
