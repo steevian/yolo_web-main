@@ -1,10 +1,14 @@
 ﻿<template>
 	<div class="layout-logo" v-if="setShowLogo" @click="onThemeConfigChange">
-		<img :src="logoMini" class="layout-logo-medium-img" />
+		<div class="logo-img-wrap">
+			<img :src="logoMini" class="layout-logo-medium-img" />
+		</div>
 		<span>安徽农业大学</span>
 	</div>
 	<div class="layout-logo-size" v-else @click="onThemeConfigChange">
-		<img :src="logoMini" class="layout-logo-size-img" />
+		<div class="logo-img-wrap logo-img-wrap--small">
+			<img :src="logoMini" class="layout-logo-size-img" />
+		</div>
 	</div>
 </template>
 
@@ -32,39 +36,89 @@ const onThemeConfigChange = () => {
 
 <style scoped lang="scss">
 .layout-logo {
-	width: 220px;
-	height: 50px;
+	width: calc(100% - 8px);
+	min-height: 124px;
+	margin: 4px auto 10px;
+	padding: 18px 12px 12px;
 	display: flex;
+	flex-direction: column;
 	align-items: center;
 	justify-content: center;
-	box-shadow: rgb(0 21 41 / 2%) 0px 1px 4px;
-	color: var(--el-color-primary);
-	font-size: 16px;
+	gap: 12px;
+	background: #2a2e37;
+	border-radius: 16px;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+	border: none;
+	color: #fff;
+	font-size: 18px;
+	font-weight: 800;
+	line-height: 1.2;
 	cursor: pointer;
 	animation: logoAnimation 0.3s ease-in-out;
+	.logo-img-wrap {
+		width: 62px;
+		height: 62px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: #fff;
+		border-radius: 50%;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+		margin-bottom: 2px;
+	}
+	&-medium-img {
+		width: 48px;
+		height: 48px;
+		object-fit: contain;
+		image-rendering: -webkit-optimize-contrast;
+		image-rendering: crisp-edges;
+		display: block;
+		margin: 0 auto;
+	}
 	span {
 		white-space: nowrap;
-		display: inline-block;
+		display: block;
+		text-align: center;
+		color: #fff;
+		font-weight: 800;
+		letter-spacing: 0.3px;
+		margin-top: 2px;
+		font-size: 17px;
 	}
 	&:hover {
 		span {
-			color: var(--color-primary-light-2);
+			color: #fff;
 		}
-	}
-	&-medium-img {
-		width: 40px;
-		margin-right: 10px;
 	}
 }
 .layout-logo-size {
-	width: 100%;
-	height: 50px;
+	width: calc(100% - 8px);
+	height: 76px;
+	margin: 4px auto 10px;
+	border-radius: 14px;
+	background: #2a2e37;
+	box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
 	display: flex;
+	align-items: center;
+	justify-content: center;
 	cursor: pointer;
 	animation: logoAnimation 0.3s ease-in-out;
+	.logo-img-wrap--small {
+		width: 44px;
+		height: 44px;
+		background: #fff;
+		border-radius: 50%;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+	}
 	&-img {
-		width: 20px;
-		margin: auto;
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
+		display: block;
+		margin: 0 auto;
 	}
 	&:hover {
 		img {
