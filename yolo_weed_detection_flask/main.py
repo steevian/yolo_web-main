@@ -600,6 +600,8 @@ class VideoProcessingApp:
         self.video_process_progress = 0
         # 新增：当前处理的视频线程
         self.current_video_thread = None
+        # 训练管理占位任务（仅页面联调用，不执行真实训练）
+        self.train_placeholder_tasks = []
 
     def create_directories(self):
         """创建必要的目录（基于Flask项目根目录）"""
@@ -687,6 +689,14 @@ class VideoProcessingApp:
         self.app.add_url_rule('/flask/user/<username>', 'get_user_by_username', self.get_user_by_username, methods=['GET'])
         self.app.add_url_rule('/flask/user/<int:user_id>', 'update_user', self.update_user, methods=['POST'])
         self.app.add_url_rule('/flask/user/<int:user_id>', 'delete_user', self.delete_user, methods=['DELETE'])
+
+        # 训练管理占位接口（当前阶段仅预留前后端联调，不接入训练核心执行）
+        self.app.add_url_rule('/flask/train/tasks', 'get_train_tasks', self.get_train_tasks, methods=['GET'])
+        self.app.add_url_rule('/flask/train/tasks', 'create_train_task', self.create_train_task, methods=['POST'])
+        self.app.add_url_rule('/flask/train/monitor', 'get_train_monitor', self.get_train_monitor, methods=['GET'])
+        self.app.add_url_rule('/flask/train/datasets', 'get_train_datasets', self.get_train_datasets, methods=['GET'])
+        self.app.add_url_rule('/flask/train/datasets/<dataset_name>/analysis', 'get_train_dataset_analysis', self.get_train_dataset_analysis, methods=['GET'])
+        self.app.add_url_rule('/flask/train/models/compare', 'get_train_model_compare', self.get_train_model_compare, methods=['GET'])
         
         # 静态文件访问（关键：解决前端获取上传/结果文件404）
         self.app.add_url_rule('/uploads/<path:filename>', 'serve_upload', self.serve_upload)
@@ -2060,6 +2070,234 @@ class VideoProcessingApp:
             
         except Exception as e:
             return jsonify({"code": 500, "msg": str(e)})
+
+    # ========== 训练管理占位接口（不接入训练执行） ==========
+    def _build_placeholder_train_tasks(self):
+        """构造训练任务列表（占位 + 本地 runs 扫描）"""
+        tasks = []
+
+        for task in self.train_placeholder_tasks:
+            tasks.append(task)
+
+        runs_dir = os.path.join(self.BASE_DIR, 'runs')
+        if os.path.isdir(runs_dir):
+            for project_name in sorted(os.listdir(runs_dir)):
+                project_path = os.path.join(runs_dir, project_name)
+                if not os.path.isdir(project_path):
+                    continue
+                for run_name in sorted(os.listdir(project_path)):
+                    run_path = os.path.join(project_path, run_name)
+                    if not os.path.isdir(run_path):
+                        continue
+                    task_id = f"scan-{project_name}-{run_name}"
+                    created_at = datetime.fromtimestamp(os.path.getmtime(run_path)).strftime('%Y-%m-%d %H:%M:%S')
+                    tasks.append({
+                        'taskId': task_id,
+                        'taskName': f"{project_name}/{run_name}",
+                        'modelType': 'unknown',
+                        'datasetName': 'unknown',
+                        'status': 'history',
+                        'createdAt': created_at,
+                        'source': 'runs-scan',
+                    })
+
+        if not tasks:
+            tasks.append({
+                'taskId': 'placeholder-001',
+                'taskName': 'weed-train-demo',
+                'modelType': 'yolo11n',
+                'datasetName': 'weed_dataset_v1',
+                'status': 'placeholder',
+                'createdAt': get_now_str(),
+                'source': 'placeholder',
+            })
+
+        return tasks
+
+    def get_train_tasks(self):
+        """获取训练任务列表（占位接口）"""
+        try:
+            tasks = self._build_placeholder_train_tasks()
+            return jsonify({
+                'code': 0,
+                'msg': '获取训练任务成功（占位数据）',
+                'data': {
+                    'status': 'placeholder',
+                    'todo': '后续接入真实训练任务调度与数据库持久化',
+                    'tasks': tasks,
+                },
+            })
+        except Exception as e:
+            print(f"获取训练任务失败: {e}")
+            return jsonify({'code': 500, 'msg': f'获取训练任务失败: {str(e)}', 'data': {'tasks': []}})
+
+    def create_train_task(self):
+        """创建训练任务（占位接口，不执行训练）"""
+        try:
+            data = request.get_json() or {}
+            task_name = (data.get('taskName') or '').strip()
+            if not task_name:
+                return jsonify({'code': 400, 'msg': '任务名称不能为空'})
+
+            task = {
+                'taskId': f"manual-{uuid.uuid4().hex[:8]}",
+                'taskName': task_name,
+                'modelType': data.get('modelType', 'yolo11n'),
+                'datasetName': data.get('datasetName', 'weed_dataset_v1'),
+                'status': 'queued',
+                'createdAt': get_now_str(),
+                'epochs': int(data.get('epochs', 100)),
+                'batchSize': int(data.get('batchSize', 16)),
+                'imageSize': int(data.get('imageSize', 640)),
+                'remark': data.get('remark', ''),
+                'source': 'manual-placeholder',
+            }
+            self.train_placeholder_tasks.insert(0, task)
+
+            return jsonify({
+                'code': 0,
+                'msg': '训练任务创建成功（占位，未执行）',
+                'data': {
+                    'status': 'placeholder',
+                    'todo': '后续接入真实训练执行引擎',
+                    'task': task,
+                },
+            })
+        except Exception as e:
+            print(f"创建训练任务失败: {e}")
+            return jsonify({'code': 500, 'msg': f'创建训练任务失败: {str(e)}'})
+
+    def get_train_monitor(self):
+        """获取训练监控数据（占位接口）"""
+        try:
+            task_id = request.args.get('taskId', '')
+            epochs = []
+            for idx in range(1, 11):
+                epochs.append({
+                    'epoch': idx,
+                    'loss': round(max(0.1, 2.2 - idx * 0.18), 4),
+                    'precision': round(min(0.99, 0.52 + idx * 0.035), 4),
+                    'recall': round(min(0.99, 0.48 + idx * 0.034), 4),
+                    'map50': round(min(0.99, 0.45 + idx * 0.04), 4),
+                })
+
+            overview = {
+                'taskId': task_id or 'placeholder-001',
+                'status': 'running-placeholder',
+                'currentEpoch': 10,
+                'totalEpoch': 100,
+                'progress': 10,
+                'map50': epochs[-1]['map50'],
+                'precision': epochs[-1]['precision'],
+                'recall': epochs[-1]['recall'],
+                'updatedAt': get_now_str(),
+            }
+
+            return jsonify({
+                'code': 0,
+                'msg': '获取训练监控成功（占位数据）',
+                'data': {
+                    'status': 'placeholder',
+                    'todo': '后续接入真实训练日志与指标流',
+                    'overview': overview,
+                    'epochs': epochs,
+                },
+            })
+        except Exception as e:
+            print(f"获取训练监控失败: {e}")
+            return jsonify({'code': 500, 'msg': f'获取训练监控失败: {str(e)}'})
+
+    def get_train_datasets(self):
+        """获取训练数据集列表（占位接口）"""
+        try:
+            dataset_candidates = []
+            for folder in ['datasets', 'datesets']:
+                folder_path = os.path.join(self.BASE_DIR, folder)
+                if os.path.isdir(folder_path):
+                    for name in sorted(os.listdir(folder_path)):
+                        path = os.path.join(folder_path, name)
+                        if os.path.isdir(path):
+                            dataset_candidates.append({'name': name, 'path': path})
+
+            if not dataset_candidates:
+                dataset_candidates = [
+                    {'name': 'weed_dataset_v1', 'path': 'placeholder://weed_dataset_v1'},
+                    {'name': 'weed_dataset_v2', 'path': 'placeholder://weed_dataset_v2'},
+                ]
+
+            return jsonify({
+                'code': 0,
+                'msg': '获取数据集列表成功（占位数据）',
+                'data': {
+                    'status': 'placeholder',
+                    'todo': '后续接入真实数据集目录扫描和标签统计',
+                    'datasets': dataset_candidates,
+                },
+            })
+        except Exception as e:
+            print(f"获取数据集列表失败: {e}")
+            return jsonify({'code': 500, 'msg': f'获取数据集列表失败: {str(e)}', 'data': {'datasets': []}})
+
+    def get_train_dataset_analysis(self, dataset_name):
+        """获取数据集分析结果（占位接口）"""
+        try:
+            analysis = {
+                'datasetName': dataset_name,
+                'trainImages': 320,
+                'valImages': 80,
+                'classDistribution': {
+                    '杂草': 1280,
+                    '作物': 860,
+                    '土壤背景': 540,
+                },
+                'imageSizes': [
+                    [640, 640],
+                    [1280, 720],
+                    [1920, 1080],
+                    [1024, 768],
+                ],
+                'status': 'placeholder',
+                'todo': '后续接入真实标签文件统计与尺寸分布分析',
+            }
+            return jsonify({'code': 0, 'msg': '获取数据集分析成功（占位数据）', 'data': analysis})
+        except Exception as e:
+            print(f"获取数据集分析失败: {e}")
+            return jsonify({'code': 500, 'msg': f'获取数据集分析失败: {str(e)}'})
+
+    def get_train_model_compare(self):
+        """获取模型比较结果（占位接口）"""
+        try:
+            model_options = [
+                {'modelId': 'weed_best', 'name': 'weed_best.pt (当前部署模型)'},
+                {'modelId': 'yolo11n', 'name': 'YOLO11n (占位对比模型)'},
+                {'modelId': 'yolo11s', 'name': 'YOLO11s (占位对比模型)'},
+            ]
+            model_a = request.args.get('modelA', model_options[0]['modelId'])
+            model_b = request.args.get('modelB', model_options[1]['modelId'])
+
+            metrics = [
+                {'metric': 'mAP50', 'modelA': 0.912, 'modelB': 0.887, 'winner': model_a},
+                {'metric': 'Precision', 'modelA': 0.901, 'modelB': 0.872, 'winner': model_a},
+                {'metric': 'Recall', 'modelA': 0.865, 'modelB': 0.881, 'winner': model_b},
+                {'metric': '推理耗时(ms/img)', 'modelA': 14.8, 'modelB': 11.6, 'winner': model_b},
+            ]
+
+            return jsonify({
+                'code': 0,
+                'msg': '获取模型比较成功（占位数据）',
+                'data': {
+                    'status': 'placeholder',
+                    'todo': '后续接入真实评估报告与推理测速结果',
+                    'modelA': model_a,
+                    'modelB': model_b,
+                    'modelOptions': model_options,
+                    'metrics': metrics,
+                    'summary': f"占位结果：{model_a} 与 {model_b} 完成比较，后续接入真实评估数据。",
+                },
+            })
+        except Exception as e:
+            print(f"获取模型比较失败: {e}")
+            return jsonify({'code': 500, 'msg': f'获取模型比较失败: {str(e)}'})
 
     # 工具方法
     def download_file(self, url, save_dir):
