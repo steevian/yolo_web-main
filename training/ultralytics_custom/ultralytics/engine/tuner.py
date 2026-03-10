@@ -72,7 +72,7 @@ class Tuner:
         >>>     data="coco8.yaml",
         >>>     epochs=10,
         >>>     iterations=300,
-        >>>     mongodb_uri="mongodb+srv://user:pass@cluster.mongodb.net/",
+        >>>     mongodb_uri="<your_mongodb_uri>",  # 已移除明文示例
         >>>     mongodb_db="ultralytics",
         >>>     mongodb_collection="tune_results"
         >>> )
@@ -139,11 +139,11 @@ class Tuner:
             f"{self.prefix}💡 Learn about tuning at https://docs.ultralytics.com/guides/hyperparameter-tuning"
         )
 
-    def _connect(self, uri: str = "mongodb+srv://username:password@cluster.mongodb.net/", max_retries: int = 3):
+    def _connect(self, uri: str = "", max_retries: int = 3):  # 默认值已清空，防止明文泄露
         """Create MongoDB client with exponential backoff retry on connection failures.
 
         Args:
-            uri (str): MongoDB connection string with credentials and cluster information.
+            uri (str): MongoDB connection字符串（请勿在此处写明文密钥）。
             max_retries (int): Maximum number of connection attempts before giving up.
 
         Returns:
@@ -186,7 +186,7 @@ class Tuner:
         saves results to a shared collection and reads the latest best hyperparameters from all workers for evolution.
 
         Args:
-            mongodb_uri (str): MongoDB connection string, e.g. 'mongodb+srv://username:password@cluster.mongodb.net/'.
+            mongodb_uri (str): MongoDB connection字符串（请勿在此处写明文密钥）。
             mongodb_db (str, optional): Database name.
             mongodb_collection (str, optional): Collection name.
 

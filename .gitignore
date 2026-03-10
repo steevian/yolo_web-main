@@ -172,3 +172,6 @@ reference/
 data/
 docs/
 experiments/
+
+# 敏感代码文件，防止误提交
+training/ultralytics_custom/ultralytics/engine/tuner.py
