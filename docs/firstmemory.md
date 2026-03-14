@@ -409,3 +409,6 @@ python training/scripts/phase1_generate_data_yaml.py
 - 出现过双终端并行训练冲突：两个守护实例同时启动导致两个 fresh run 并行，终端进度不一致。
 - 已完成止血：仅保留正式守护实例，停止误开的调试实例。
 - 新增重开观察脚本：`training/scripts/reopen_phase2_watch.ps1`，可在重开 VSCode 后快速恢复单一进度观察终端。
+
+## 12. Phase2自动更新追踪
+- 2026-03-14 23:26:42 | run_id=baseline_full200_fresh_20260313_195344 | status=interrupted

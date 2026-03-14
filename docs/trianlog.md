@@ -77,3 +77,7 @@
 - 处置：保留正式守护链（`MaxRestarts=500` + `--amp`）并停止误开的单次调试链（`MaxRestarts=1`）。
 - 结果：当前仅保留单路训练进程（1个 powershell + 1个 python），进度来源已统一。
 - 状态确认：GPU 利用率约 100%，属于正常训练而非卡死。
+## 2026-03-14 23:26:42 | Phase2中断
+
+- run_id=baseline_full200_fresh_20260313_195344
+- Training interrupted by user/terminal.
