@@ -170,8 +170,42 @@ imgs/
 _legacy_archive/
 reference/
 data/
-docs/
-experiments/
+
+# experiments：仅忽略大体积训练产物，保留核心可追溯文本
+experiments/**/weights/
+experiments/**/*.pt
+experiments/**/*.pth
+experiments/**/*.onnx
+experiments/**/*.engine
+experiments/**/*.bin
+experiments/**/*.jpg
+experiments/**/*.jpeg
+experiments/**/*.png
+experiments/**/*.bmp
+experiments/**/*.webp
+experiments/**/*.mp4
+experiments/**/*.avi
+experiments/**/*.mov
+experiments/**/*.mkv
+experiments/**/events.out.tfevents.*
+experiments/**/train_batch*.jpg
+experiments/**/val_batch*.jpg
+
+# 保留关键追踪文件
+!experiments/**/results.csv
+!experiments/**/metrics_epoch.csv
+!experiments/**/run_summary.json
+!experiments/**/args.yaml
+!experiments/**/hyperparams.json
+!experiments/**/environment_snapshot.json
+!experiments/**/env.txt
+!experiments/**/train.log
+!experiments/logs/**/*.log
+!experiments/logs/**/*.json
+!experiments/logs/**/*.md
+!experiments/logs/**/*.csv
+!experiments/summary/**/*.md
+!experiments/summary/**/*.csv
 
 # 敏感代码文件，防止误提交
 training/ultralytics_custom/ultralytics/engine/tuner.py

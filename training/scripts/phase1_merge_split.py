@@ -21,6 +21,8 @@ import xml.etree.ElementTree as ET
 from PIL import Image
 from sklearn.model_selection import train_test_split
 
+from dataset_taxonomy import canonicalize_class_name
+
 
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 
@@ -66,6 +68,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--clean-output", action="store_true")
+    parser.add_argument(
+        "--copy-mode",
+        type=str,
+        default="hardlink",
+        choices=["copy", "hardlink"],
+        help="File materialization strategy. 'hardlink' saves disk space on same volume.",
+    )
     return parser.parse_args()
 
 
@@ -96,8 +105,9 @@ def parse_classes_from_xml(xml_path: Path) -> list[str]:
     classes: list[str] = []
     for obj in root.findall("object"):
         name = (obj.findtext("name") or "").strip()
-        if name:
-            classes.append(name)
+        canonical_name = canonicalize_class_name(name)
+        if canonical_name:
+            classes.append(canonical_name)
     return classes
 
 
@@ -166,7 +176,24 @@ def safe_train_val_split(
         return shuffled[:cut], shuffled[cut:]
 
 
-def copy_group(samples: Iterable[Sample], split: str, output_root: Path, dry_run: bool = False) -> int:
+def _materialize_file(src: Path, dst: Path, copy_mode: str) -> None:
+    if dst.exists():
+        dst.unlink()
+
+    if copy_mode == "hardlink":
+        try:
+            dst.hardlink_to(src)
+            return
+        except Exception:
+            # Fallback to copy when hardlink is not available.
+            pass
+
+    shutil.copy2(src, dst)
+
+
+def copy_group(
+    samples: Iterable[Sample], split: str, output_root: Path, dry_run: bool = False, copy_mode: str = "copy"
+) -> int:
     copied = 0
     for s in samples:
         dst_stem = s.prefixed_stem
@@ -175,10 +202,10 @@ def copy_group(samples: Iterable[Sample], split: str, output_root: Path, dry_run
         json_dst = output_root / "json" / split / f"{dst_stem}.json"
 
         if not dry_run:
-            shutil.copy2(s.image_path, img_dst)
-            shutil.copy2(s.xml_path, xml_dst)
+            _materialize_file(s.image_path, img_dst, copy_mode)
+            _materialize_file(s.xml_path, xml_dst, copy_mode)
             if s.json_path and s.json_path.exists():
-                shutil.copy2(s.json_path, json_dst)
+                _materialize_file(s.json_path, json_dst, copy_mode)
         copied += 1
     return copied
 
@@ -228,9 +255,9 @@ def main() -> int:
     if args.limit_test > 0:
         test_samples = test_samples[: args.limit_test]
 
-    n_train = copy_group(train_samples, "train", output_root, dry_run=args.dry_run)
-    n_val = copy_group(val_samples, "val", output_root, dry_run=args.dry_run)
-    n_test = copy_group(test_samples, "test", output_root, dry_run=args.dry_run)
+    n_train = copy_group(train_samples, "train", output_root, dry_run=args.dry_run, copy_mode=args.copy_mode)
+    n_val = copy_group(val_samples, "val", output_root, dry_run=args.dry_run, copy_mode=args.copy_mode)
+    n_test = copy_group(test_samples, "test", output_root, dry_run=args.dry_run, copy_mode=args.copy_mode)
 
     print("[DONE] phase1_merge_split")
     print(f"train: {n_train}")

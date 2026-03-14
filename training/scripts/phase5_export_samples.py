@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 import random
+import sys
 from collections import defaultdict
 from pathlib import Path
-
-from ultralytics import YOLO
 
 
 CLASS_NAMES = [
@@ -37,6 +36,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--per-class", type=int, default=2)
     parser.add_argument("--imgsz", type=int, default=640)
     parser.add_argument(
+        "--ultralytics-root",
+        type=Path,
+        default=repo_root / "training" / "ultralytics_custom",
+        help="Path containing custom ultralytics package root for custom modules like ECA",
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         default=repo_root / "experiments" / "summary" / "samples",
@@ -44,10 +49,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def parse_primary_label(label_file: Path) -> int | None:
+def parse_label_ids(label_file: Path) -> set[int]:
     if not label_file.exists():
-        return None
-    first = None
+        return set()
+    ids: set[int] = set()
     with label_file.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -58,14 +63,18 @@ def parse_primary_label(label_file: Path) -> int | None:
                 cid = int(parts[0])
             except Exception:
                 continue
-            first = cid
-            break
-    return first
+            ids.add(cid)
+    return ids
 
 
 def main() -> int:
     args = parse_args()
     random.seed(args.seed)
+
+    if args.ultralytics_root.exists() and str(args.ultralytics_root.resolve()) not in sys.path:
+        sys.path.insert(0, str(args.ultralytics_root.resolve()))
+
+    from ultralytics import YOLO
 
     test_img_dir = args.dataset_root / "images" / "test"
     test_lbl_dir = args.dataset_root / "labels" / "test"
@@ -75,10 +84,10 @@ def main() -> int:
     for img in sorted(test_img_dir.glob("*")):
         if img.suffix.lower() not in {".jpg", ".jpeg", ".png", ".bmp", ".webp"}:
             continue
-        cid = parse_primary_label(test_lbl_dir / f"{img.stem}.txt")
-        if cid is None or cid < 0 or cid >= len(CLASS_NAMES):
-            continue
-        bucket[cid].append(img)
+        class_ids = parse_label_ids(test_lbl_dir / f"{img.stem}.txt")
+        for cid in class_ids:
+            if 0 <= cid < len(CLASS_NAMES):
+                bucket[cid].append(img)
 
     selected: list[tuple[int, Path]] = []
     for cid in range(len(CLASS_NAMES)):

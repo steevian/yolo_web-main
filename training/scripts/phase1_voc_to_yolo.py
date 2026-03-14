@@ -8,28 +8,12 @@ import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
+from PIL import Image
 
-CLASS_NAMES = [
-    "Carpetweed",
-    "Eclipta",
-    "Goosegrass",
-    "Lambsquarters",
-    "Morningglory",
-    "Ragweed",
-    "Palmer Amaranth",
-    "Purslane",
-    "Spotted spurge",
-    "Waterhemp",
-]
-
-def normalize_class_name(name: str) -> str:
-    # Canonicalize VOC names: ignore spaces/underscores/case differences.
-    return "".join(ch for ch in name.lower() if ch.isalnum())
+from dataset_taxonomy import CLASS_NAMES, canonicalize_class_name, class_id_from_name
 
 
-NORMALIZED_CLASS_TO_ID = {
-    normalize_class_name(name): idx for idx, name in enumerate(CLASS_NAMES)
-}
+IMG_EXTS = (".jpg", ".jpeg", ".png", ".bmp", ".webp")
 
 
 def parse_args() -> argparse.Namespace:
@@ -61,6 +45,21 @@ def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, v))
 
 
+def find_image_path(images_dir: Path, stem: str) -> Path | None:
+    for ext in IMG_EXTS:
+        candidate = images_dir / f"{stem}{ext}"
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def read_image_size(image_path: Path | None) -> tuple[int, int]:
+    if image_path is None:
+        return 0, 0
+    with Image.open(image_path) as image:
+        return image.size
+
+
 def convert_xml_to_lines(xml_path: Path) -> tuple[list[str], list[str]]:
     errors: list[str] = []
     lines: list[str] = []
@@ -80,8 +79,8 @@ def convert_xml_to_lines(xml_path: Path) -> tuple[list[str], list[str]]:
 
     for obj in objects:
         raw_name = (obj.findtext("name") or "").strip()
-        key = normalize_class_name(raw_name)
-        if key not in NORMALIZED_CLASS_TO_ID:
+        class_id = class_id_from_name(raw_name)
+        if class_id is None:
             errors.append(f"unknown_class:{raw_name}")
             continue
 
@@ -114,8 +113,100 @@ def convert_xml_to_lines(xml_path: Path) -> tuple[list[str], list[str]]:
         y_center = (ymin + ymax) / 2.0 / height
         w_norm = bw / width
         h_norm = bh / height
-        class_id = NORMALIZED_CLASS_TO_ID[key]
 
+        lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {w_norm:.6f} {h_norm:.6f}")
+
+    return lines, errors
+
+
+def _iter_json_regions(payload: object) -> list[tuple[dict, dict]]:
+    pairs: list[tuple[dict, dict]] = []
+    if not isinstance(payload, dict):
+        return pairs
+
+    for item in payload.values():
+        if not isinstance(item, dict):
+            continue
+        regions = item.get("regions")
+        if not isinstance(regions, dict):
+            continue
+
+        shapes = regions.get("shape_attributes")
+        attrs = regions.get("region_attributes")
+
+        if isinstance(shapes, dict):
+            shapes = [shapes]
+        if isinstance(attrs, dict):
+            attrs = [attrs]
+
+        if not isinstance(shapes, list) or not isinstance(attrs, list):
+            continue
+
+        for shape, attr in zip(shapes, attrs):
+            if isinstance(shape, dict) and isinstance(attr, dict):
+                pairs.append((shape, attr))
+
+    return pairs
+
+
+def convert_json_to_lines(json_path: Path, image_path: Path | None) -> tuple[list[str], list[str]]:
+    import json
+
+    errors: list[str] = []
+    lines: list[str] = []
+    width, height = read_image_size(image_path)
+    if width <= 0 or height <= 0:
+        return lines, ["invalid_image_size"]
+
+    try:
+        payload = json.loads(json_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return lines, [f"json_parse_exception:{exc}"]
+
+    pairs = _iter_json_regions(payload)
+    if not pairs:
+        return lines, ["empty_json_regions"]
+
+    for shape, attr in pairs:
+        if shape.get("name") != "rect":
+            errors.append("unsupported_shape")
+            continue
+
+        weed_attrs = attr.get("Weed", {})
+        if not isinstance(weed_attrs, dict):
+            errors.append("invalid_region_attributes")
+            continue
+
+        raw_name = next((name for name, enabled in weed_attrs.items() if enabled), "")
+        class_id = class_id_from_name(raw_name)
+        if class_id is None:
+            errors.append(f"unknown_class:{raw_name}")
+            continue
+
+        try:
+            xmin = float(shape.get("x", 0))
+            ymin = float(shape.get("y", 0))
+            xmax = xmin + float(shape.get("width", 0))
+            ymax = ymin + float(shape.get("height", 0))
+        except ValueError:
+            errors.append(f"invalid_bbox_number:{raw_name}")
+            continue
+
+        xmin = clamp(xmin, 0, width)
+        xmax = clamp(xmax, 0, width)
+        ymin = clamp(ymin, 0, height)
+        ymax = clamp(ymax, 0, height)
+
+        bw = xmax - xmin
+        bh = ymax - ymin
+        if bw <= 1 or bh <= 1:
+            errors.append(f"invalid_bbox_range:{raw_name}")
+            continue
+
+        x_center = (xmin + xmax) / 2.0 / width
+        y_center = (ymin + ymax) / 2.0 / height
+        w_norm = bw / width
+        h_norm = bh / height
         lines.append(f"{class_id} {x_center:.6f} {y_center:.6f} {w_norm:.6f} {h_norm:.6f}")
 
     return lines, errors
@@ -144,10 +235,14 @@ def main() -> int:
     for split in ("train", "val", "test"):
         xml_dir = ann_root / split
         label_dir = labels_root / split
+        json_dir = ds_root / "json" / split
+        images_dir = ds_root / "images" / split
         label_dir.mkdir(parents=True, exist_ok=True)
 
         for xml_path in sorted(xml_dir.glob("*.xml")):
             label_path = label_dir / f"{xml_path.stem}.txt"
+            json_path = json_dir / f"{xml_path.stem}.json"
+            image_path = find_image_path(images_dir, xml_path.stem)
             if not args.force and valid_yolo_label(label_path):
                 skipped += 1
                 continue
@@ -155,9 +250,15 @@ def main() -> int:
             try:
                 lines, errs = convert_xml_to_lines(xml_path)
             except Exception as exc:
-                failed += 1
-                rows.append([split, str(xml_path), f"xml_parse_exception:{exc}"])
-                continue
+                lines = []
+                errs = [f"xml_parse_exception:{exc}"]
+
+            if not lines and json_path.exists():
+                json_lines, json_errs = convert_json_to_lines(json_path, image_path)
+                errs.extend(f"json_fallback:{err}" for err in json_errs)
+                if json_lines:
+                    lines = json_lines
+                    errs.append("json_fallback:used")
 
             if not lines:
                 failed += 1

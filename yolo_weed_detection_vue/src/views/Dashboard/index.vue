@@ -39,7 +39,7 @@ html, body, #app {
 			<section class="hero-card dashboard-card">
 				<div class="hero-text">
 					<h2>YOLOv11 杂草检测工作台</h2>
-					<p>统一入口 · 快速检测 · 数据可视</p>
+					<p>统一入口</p>
 				</div>
 				<div class="hero-actions">
 					<el-button type="primary" @click="goTo('/imgPredict')">

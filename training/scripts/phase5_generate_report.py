@@ -25,7 +25,16 @@ def parse_args() -> argparse.Namespace:
 
 
 def markdown_table(df: pd.DataFrame) -> str:
-    return df.to_markdown(index=False)
+    headers = [str(c) for c in df.columns.tolist()]
+    rows = [[str(v) for v in row] for row in df.values.tolist()]
+    divider = ["---"] * len(headers)
+    table_lines = [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join(divider) + " |",
+    ]
+    for row in rows:
+        table_lines.append("| " + " | ".join(row) + " |")
+    return "\n".join(table_lines)
 
 
 def main() -> int:
@@ -60,7 +69,7 @@ def main() -> int:
         "## 1. 实验设置",
         "- 数据集：3SeasonWeedDet10，2021+2022训练/验证，2023测试",
         "- 输入尺寸：640",
-        "- 训练超参：epochs=200, batch=8, lr0=0.01, optimizer=SGD",
+        "- 训练超参：epochs=200, batch=6, lr0=0.01, optimizer=SGD",
         "- 对比模型：YOLOv11-S、YOLOv11-S-MBV3、YOLOv11-S-MBV3-ECA",
         "",
         "## 2. 结果对比",

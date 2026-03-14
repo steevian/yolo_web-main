@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 import torch
-from ultralytics import YOLO
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,6 +23,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--warmup", type=int, default=10)
     parser.add_argument("--iters", type=int, default=100)
     parser.add_argument("--out-csv", type=Path, default=repo_root / "experiments" / "summary" / "comparison_metrics.csv")
+    parser.add_argument(
+        "--ultralytics-root",
+        type=Path,
+        default=repo_root / "training" / "ultralytics_custom",
+        help="Path containing custom ultralytics package root for custom modules like ECA",
+    )
     return parser.parse_args()
 
 
@@ -38,7 +44,7 @@ def get_metric(res, key: str, default: float = float("nan")) -> float:
         return default
 
 
-def measure_fps(model: YOLO, imgsz: int, warmup: int, iters: int) -> float:
+def measure_fps(model, imgsz: int, warmup: int, iters: int) -> float:
     x = torch.randn(1, 3, imgsz, imgsz)
     if torch.cuda.is_available():
         x = x.cuda()
@@ -59,7 +65,7 @@ def measure_fps(model: YOLO, imgsz: int, warmup: int, iters: int) -> float:
     return iters / (t1 - t0)
 
 
-def measure_complexity(model: YOLO, imgsz: int) -> tuple[float, float]:
+def measure_complexity(model, imgsz: int) -> tuple[float, float]:
     params = float(sum(p.numel() for p in model.model.parameters()))
     try:
         from thop import profile
@@ -71,8 +77,8 @@ def measure_complexity(model: YOLO, imgsz: int) -> tuple[float, float]:
         return params, float("nan")
 
 
-def evaluate_one(name: str, weights: Path, data: Path, imgsz: int, warmup: int, iters: int) -> dict[str, float | str]:
-    model = YOLO(str(weights))
+def evaluate_one(name: str, weights: Path, data: Path, imgsz: int, warmup: int, iters: int, yolo_cls) -> dict[str, float | str]:
+    model = yolo_cls(str(weights))
     res = model.val(data=str(data), split="test", imgsz=imgsz, batch=1, verbose=False)
 
     params, flops = measure_complexity(model, imgsz)
@@ -93,12 +99,17 @@ def evaluate_one(name: str, weights: Path, data: Path, imgsz: int, warmup: int, 
 
 def main() -> int:
     args = parse_args()
+    if args.ultralytics_root.exists() and str(args.ultralytics_root.resolve()) not in sys.path:
+        sys.path.insert(0, str(args.ultralytics_root.resolve()))
+
+    from ultralytics import YOLO
+
     args.out_csv.parent.mkdir(parents=True, exist_ok=True)
 
     rows = [
-        evaluate_one("YOLOv11-S", args.baseline, args.data, args.imgsz, args.warmup, args.iters),
-        evaluate_one("YOLOv11-S-MBV3", args.mbv3, args.data, args.imgsz, args.warmup, args.iters),
-        evaluate_one("YOLOv11-S-MBV3-ECA", args.mbv3_eca, args.data, args.imgsz, args.warmup, args.iters),
+        evaluate_one("YOLOv11-S", args.baseline, args.data, args.imgsz, args.warmup, args.iters, YOLO),
+        evaluate_one("YOLOv11-S-MBV3", args.mbv3, args.data, args.imgsz, args.warmup, args.iters, YOLO),
+        evaluate_one("YOLOv11-S-MBV3-ECA", args.mbv3_eca, args.data, args.imgsz, args.warmup, args.iters, YOLO),
     ]
 
     with args.out_csv.open("w", encoding="utf-8", newline="") as f:

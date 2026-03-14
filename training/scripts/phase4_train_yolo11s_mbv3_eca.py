@@ -41,12 +41,22 @@ def parse_args() -> argparse.Namespace:
         default=REPO_ROOT / "training" / "configs" / "yolo11s_mbv3_eca.yaml",
     )
     parser.add_argument("--epochs", type=int, default=200)
-    parser.add_argument("--batch", type=int, default=8)
+    parser.add_argument("--batch", type=int, default=6)
     parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument(
+        "--cache",
+        type=str,
+        default="disk",
+        help="Ultralytics cache mode: False/none, ram, or disk",
+    )
     parser.add_argument("--lr0", type=float, default=0.01)
     parser.add_argument("--optimizer", type=str, default="SGD")
     parser.add_argument("--patience", type=int, default=50)
     parser.add_argument("--save-period", type=int, default=5)
+    parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--device", type=str, default="0")
+    parser.add_argument("--amp", action="store_true", default=True)
+    parser.add_argument("--no-amp", action="store_false", dest="amp")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
@@ -80,6 +90,14 @@ def main() -> int:
         print("[ERROR] Missing data/model yaml.")
         return 1
 
+    cache_mode_raw = str(args.cache).strip().lower()
+    if cache_mode_raw in {"false", "none", "0", "off"}:
+        cache_mode: str | bool = False
+    elif cache_mode_raw in {"ram", "disk"}:
+        cache_mode = cache_mode_raw
+    else:
+        cache_mode = "disk"
+
     if args.ultralytics_root.exists() and str(args.ultralytics_root.resolve()) not in sys.path:
         sys.path.insert(0, str(args.ultralytics_root.resolve()))
 
@@ -97,10 +115,14 @@ def main() -> int:
             "epochs": args.epochs,
             "batch": args.batch,
             "imgsz": args.imgsz,
+            "cache": cache_mode,
             "lr0": args.lr0,
             "optimizer": args.optimizer,
             "patience": args.patience,
             "save_period": args.save_period,
+            "workers": args.workers,
+            "device": args.device,
+            "amp": args.amp,
             "seed": args.seed,
             "resume": args.resume,
             "ultralytics_root": str(args.ultralytics_root.resolve()),
@@ -115,10 +137,14 @@ def main() -> int:
             epochs=args.epochs,
             batch=args.batch,
             imgsz=args.imgsz,
+            cache=cache_mode,
             lr0=args.lr0,
             optimizer=args.optimizer,
             patience=args.patience,
             save_period=args.save_period,
+            workers=args.workers,
+            device=args.device,
+            amp=args.amp,
             seed=args.seed,
             resume=args.resume,
             project=str(args.project),
